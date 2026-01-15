@@ -1,0 +1,59 @@
+{
+  "preprocessing": [
+    {
+      "name": "Clamp",
+      "params": {
+        "out_min": 0,
+        "out_max": 2100
+      }
+    },
+    {
+      "name": "RescaleIntensity",
+      "params": {
+        "in_min_max": [0, 2100],
+        "out_min_max": [-1, 1],
+        "percentiles": [0.5, 99.5]
+      }
+    },
+    {
+      "name": "ZNormalization",
+      "params": {
+        "p": 1.0
+      }
+    }
+  ],
+
+  "augmentations": [
+    {
+      "name": "RandomAffine",
+      "params": {
+        "scales": [0.5, 1.5],
+        "degrees": [10, 10],
+        "isotropic": false,
+        "image_interpolation": "linear",
+        "p": 0.5
+      }
+    },
+    {
+      "name": "RandomFlip",
+      "params": {
+        "axes": 0,
+        "flip_probability": 0.5
+      }
+    },
+    {
+      "name": "RandomFlip",
+      "params": {
+        "axes": 1,
+        "flip_probability": 0.5
+      }
+    },
+    {
+      "name": "RandomFlip",
+      "params": {
+        "axes": 2,
+        "flip_probability": 0.5
+      }
+    }
+  ]
+}

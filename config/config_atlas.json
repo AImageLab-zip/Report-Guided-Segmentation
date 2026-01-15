@@ -1,0 +1,43 @@
+{
+    "name": "ATLAS_training",
+    "n_gpu": 1,
+
+    "dataset": {
+        "name": "ATLAS",
+        "path": "/work/grana_neuro/nnUNet_raw/ATLAS_test",
+        "patch_size": 100,
+
+        "grid_overlap": 0,
+        "queue_length": 100,
+        "samples_per_volume": 2,
+        "batch_size": 2,
+        "split_file": "",
+        "val_ratio": 0.2,
+        "transforms": "/work/grana_neuro/Brain-Segmentation/config/atlas_transforms.json"
+    },
+    "model": {
+        "name": "UNet3D",
+        "in_channels": 1,
+        "num_classes": 2,
+        "size": 32
+    },
+    "loss": {
+        "name": "DiceCELoss"
+    },
+    "optimizer": {
+        "name": "RAdam",
+        "lr": 0.0003
+    },
+    "scheduler": {
+        "name": "StepLR",
+        "step_size": 10,
+        "gamma": 0.9
+    },
+    "metrics": {
+        "name": ["DiceMetric"]
+    },
+    "classes": {
+        "0": "Background",
+        "1": "Lesion"
+    }
+}

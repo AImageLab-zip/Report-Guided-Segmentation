@@ -1,0 +1,23 @@
+{
+  "preprocessing": [],
+
+  "augmentations": [
+    {
+      "name": "RandomAffine",
+      "params": {
+        "scales": [0.5, 1.5],
+        "degrees": [10, 10],
+        "isotropic": false,
+        "image_interpolation": "linear",
+        "p": 0.5
+      }
+    },
+    {
+      "name": "RandomFlip",
+      "params": {
+        "axes": [0, 1],
+        "flip_probability": 0.5
+      }
+    }
+  ]
+}

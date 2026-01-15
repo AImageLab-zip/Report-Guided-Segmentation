@@ -1,0 +1,44 @@
+{
+    "name": "BraTS2d_training",
+    "n_gpu": 1,
+
+    "dataset": {
+        "name": "BraTS2D",
+        "path": "/work/tesi_ocarpentiero/brats3d/train_gli_norm",
+
+        "batch_size": 2,
+        "split_file": "/work/grana_neuro/Brain-Segmentation/split_files/BraTS23.json",
+        "val_ratio": 0.2,
+        "transforms": "/work/grana_neuro/Brain-Segmentation/config/brats2d_transforms.json",
+        "slice_axes": 2,
+        "min_foreground_ratio": 0.01,
+        "modalities": ["t1c", "t1n", "t2f", "t2w"]
+    },
+    "model": {
+        "name": "UNet2D",
+        "in_channels": 3,
+        "num_classes": 4,
+        "size": 32
+    },
+    "loss": {
+        "name": "DiceLoss"
+    },
+    "optimizer": {
+        "name": "RAdam",
+        "lr": 0.0003
+    },
+    "scheduler": {
+        "name": "StepLR",
+        "step_size": 10,
+        "gamma": 0.9
+    },
+    "metrics": {
+        "name": []
+    },
+    "classes": {
+        "0": "Background",
+        "1": "Necrosi",
+        "2": "Edema",
+        "3": "Enhancing Tumor"
+    }
+}
