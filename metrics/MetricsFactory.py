@@ -4,7 +4,7 @@ import monai
 # Class to create a dictionary containing the metrics specified in the config file
 class MetricsFactory:
     @staticmethod
-    def create_instance(config) -> {}:
+    def create_instance(config) -> dict:
         metrics_name = config.metrics['name']
         #TODO: Handle possibly metrics parameters
         #metrics_kwargs = config.metrics

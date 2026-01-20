@@ -17,7 +17,7 @@ class Trainer_3D(BaseTrainer):
     """
     Trainer class which implements a Basetrainer
     """
-    def _train_epoch(self, epoch) -> {}:
+    def _train_epoch(self, epoch):
         """
         Training logic for an epoch
 
@@ -27,8 +27,6 @@ class Trainer_3D(BaseTrainer):
         self.model.train()
 
         for idx, sample in tqdm(enumerate(self.train_loader), desc=f'Epoch {epoch}', total=len(self.train_loader)):
-            if idx>5:
-                break
             image = sample['image'][tio.DATA].float().to(self.device)
             label = _onehot_enc(sample['label'][tio.DATA].long(), self.num_classes).float().to(self.device)
 
@@ -60,7 +58,7 @@ class Trainer_3D(BaseTrainer):
         return results
 
     @torch.inference_mode() #Context manager analogous to no_grad
-    def eval_epoch(self, epoch, phase) -> {}:
+    def eval_epoch(self, epoch, phase):
         """
         Validate after training an epoch
 
@@ -73,8 +71,6 @@ class Trainer_3D(BaseTrainer):
         loader = getattr(self, f'{phase}_loader')
         metrics_manager = getattr(self, f'{phase}_metrics')
         for idx, sample in tqdm(enumerate(loader), desc=f'{phase}, epoch {epoch}', total=len(loader)):
-            if idx > 3:
-                break
             # Convert batch dictionary back to Subject (batch_size=1)
             subject = tio.Subject(
                 image=tio.ScalarImage(tensor=sample['image']['data'][0]),
@@ -111,10 +107,6 @@ class Trainer_3D(BaseTrainer):
     def _inference_sampler(self, sample: tio.Subject):
 
         # Grid samplers are useful to perform inference using all patches from a volume
-        # PROVA QUA
-        #print(type(sample.image_path), type(sample.label_path), type(sample.image), type(sample.label))
-        #sample["image"].data = sample["image"].data.squeeze(0)
-        #sample["label"].data = sample["label"].data.squeeze(0)
         grid_sampler = tio.data.GridSampler(
             sample,
             self.config.dataset['patch_size'],
@@ -137,7 +129,7 @@ class Trainer_3D(BaseTrainer):
 
         return loader, pred_aggregator, label_aggregator
 
-    def _results_dict(self, phase, epoch) -> {}:
+    def _results_dict(self, phase, epoch):
         metrics_manager = getattr(self, f'{phase}_metrics')
         if phase in ['train', 'val']:
             results = {self.loss_name: metrics_manager.get_metric_at_epoch(self.loss_name, epoch)}

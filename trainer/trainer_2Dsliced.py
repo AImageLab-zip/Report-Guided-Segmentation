@@ -15,7 +15,7 @@ class Trainer_2Dsliced(BaseTrainer):
     """
     Trainer class which implements a Basetrainer
     """
-    def _train_epoch(self, epoch) -> {}:
+    def _train_epoch(self, epoch):
         """
         Training logic for an epoch
 
@@ -56,7 +56,7 @@ class Trainer_2Dsliced(BaseTrainer):
         return results
 
     @torch.inference_mode() #Context manager analogous to no_grad
-    def eval_epoch(self, epoch, phase) -> {}:
+    def eval_epoch(self, epoch, phase):
         """
         Validate after training an epoch
 
@@ -89,7 +89,7 @@ class Trainer_2Dsliced(BaseTrainer):
         return results
 
 
-    def _results_dict(self, phase, epoch) -> {}:
+    def _results_dict(self, phase, epoch):
         metrics_manager = getattr(self, f'{phase}_metrics')
         results = {self.loss_name: metrics_manager.get_metric_at_epoch(self.loss_name, epoch)}
 

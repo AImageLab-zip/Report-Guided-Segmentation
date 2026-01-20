@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 def test_unet3d():
     m = ModelFactory()
-    c = Config("/work/grana_neuro/Brain-Segmentation/config_atlas.json") # P
+    c = Config("/work/grana_neuro/Brain-Segmentation/config_atlas.json") # Place here the path to your config file
 
     unet3d = m.create_instance(c).to("cuda")
     # Input tensor must be in the format (batch_size, n_channels, H, W, D)
