@@ -21,8 +21,8 @@ Required methods:
 3. `get_loader(split)` → Returns DataLoader for 2D slices
 
 **Examples:**
-- `ATLAS.py`: 3D segmentation dataset with optional train/val split files or random splitting
-- `BraTS2D.py`: 2D sliced version extracting axial slices from 3D BraTS volumes
+- [ATLAS.py](/datasets/ATLAS.py): 3D segmentation dataset with optional train/val split files or random splitting
+- [BraTS2D.py](/datasets/BraTS2D.py): 2D sliced version extracting axial slices from 3D BraTS volumes
 
 
 ### Important Note

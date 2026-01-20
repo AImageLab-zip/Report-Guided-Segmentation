@@ -1,7 +1,7 @@
 # Metrics
 
 ## 📊 `MetricsFactory.py`
-Creates metric instances (supports [MONAI metrics](https://monai-dev.readthedocs.io/en/fixes-sphinx/metrics.html)).
+Creates metric instances (supports [MONAI metrics](https://monai-dev.readthedocs.io/en/fixes-sphinx/metrics.html) out-of-the-box.).
 
 ## 📊 `MetricsManager.py`
 Handles metric computation, accumulation, and storage.
