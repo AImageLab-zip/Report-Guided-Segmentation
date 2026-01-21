@@ -12,7 +12,7 @@ Base class for 3D volume datasets, which Loads train/validation/test image and l
 **Implemented Methods (Provided):**
 - `_get_subjects_list(split)`: Creates TorchIO Subject objects from image/label paths
 - `_get_patch_loader(dataset)`: Returns a patch-based loader using TorchIO Queue for training
-- `_get_volume_loader(dataset)`: Returns a loader for entire volumes (used in validation/testing)
+- `_get_entire_loader(dataset)`: Returns a loader for entire volume/image
 
 ## 💭 [base_dataset2d_sliced.py](base_dataset2d_sliced.py)
 Base class for 2D slice-based training from 3D volumes, which loads train/validation/test image and label paths, creates TorchIO `SubjectsDataset` of slices from the 3D dataset, and initialize all the other component needed to process the dataset.

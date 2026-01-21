@@ -73,12 +73,12 @@ class ATLAS(BaseDataset3D):
         assert split in ['train', 'val', 'test'], 'Split must be train or val or test'
 
         if split == 'train':
-            return self._get_patch_loader(self.train_set)
+            return self._get_patch_loader(self.train_set, batch_size=self.config.dataset['batch_size'])
         elif split == 'val':
             if self.validation:
-                return self._get_volume_loader(self.val_set)
+                return self._get_volume_loader(self.val_set, batch_size=1)
             else:
                 return
         elif split == 'test':
-            return self._get_volume_loader(self.test_set)
+            return self._get_volume_loader(self.test_set, batch_size=1)
 

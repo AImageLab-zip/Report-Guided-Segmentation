@@ -1,10 +1,10 @@
 import datasets
-from base.base_dataset3d import BaseDataset3D
+from base.base_dataset import BaseDataset
 from base.base_dataset2d_sliced import BaseDataset2DSliced
 
 class DatasetFactory:
     @staticmethod
-    def create_instance(config, validation, train_transforms=None, test_transforms=None) -> BaseDataset3D | BaseDataset2DSliced:
+    def create_instance(config, validation, train_transforms=None, test_transforms=None) -> BaseDataset | BaseDataset2DSliced:
         dataset_name = config.dataset['name']
         root_folder = config.dataset['path']
         # TODO: Inizializzare qua le Transforms dato che sono ricavabili dal config?

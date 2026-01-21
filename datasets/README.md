@@ -5,7 +5,7 @@ Factory pattern for creating dataset instances from config. The factory searches
 
 ## Creating a New Dataset
 
-**For 3D datasets (inherit from [BaseDataset3D](/base/base_dataset3d.py)):**
+**For 2D/3D datasets (inherit from [BaseDataset](/base/base_dataset.py)):**
 
 Required methods:
 1. `_get_ordered_images_path()` → Returns `(train_images, train_labels, val_images, val_labels, test_images, test_labels)`
