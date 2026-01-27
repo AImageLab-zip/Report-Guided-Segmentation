@@ -28,4 +28,4 @@ CSV files (`train_metrics.csv`, `val_metrics.csv`, `test_metrics.csv`) with colu
    ```python
    from .YourMetric import YourMetric
    ```
-3. To use it, specify the class name in config: `"metrics": {"name": ["YourMetric"]}`
+3. To use it, specify the class name in config: `"metrics": {"key": "identification_name", "name": ["YourMetric"], ...}` (for details see [Configuration](/config/README.md) section).

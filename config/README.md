@@ -9,16 +9,34 @@ Defines model, dataset, training parameters, optimizer, loss, and metrics. This 
 ```json
 {
   "name": "experiment_name",
-  "model": {"type": "UNet3D", "params": {...}},
+  "n_gpu": 1,
+
+  "model": {"name": "UNet3D", "params": {...}},
+
   "dataset": {
-    "type": "ATLAS",
+    "name": "ATLAS",
     "root_folder": "/path/to/data",
     "transforms": "config/atlas_transforms.json", <-- path of Transforms Config
     ...
   },
-  "optimizer": {"type": "Adam", "args": {...}},
+  
+  "classes":{"0": name_class_0, "1": name_class_1, ...},
+
   "loss": {"name": "DiceLoss", "loss_kwargs": {...}},
-  "metrics": {"name": ["DiceMetric"]}
+  "optimizer": {"name": "Adam", ...},
+  "scheduler": {"name": "StepLR", ...},
+  
+  "metrics": [
+    {
+      "key": "DSC", <-- identification name of the metric
+      "name": "DiceMetric", <-- name of the TorchIO/custom metric class
+      "params": { "include_background": false }, <-- params for the metric constructor
+      "train": true, <-- if metric must be computed during training phase
+      "val": true, <-- if metric must be computed during validation phase 
+      "test": true <-- if metric must be computed during test phase
+    },
+    ...
+  ]
 }
 ```
 
@@ -31,3 +49,11 @@ Specifies preprocessing and augmentation pipelines using TorchIO transforms (to 
   "augmentations": [...]
 }
 ```
+
+### Best model selection (`model_best.pth`)
+The best checkpoint is selected using the **validation** value of the **first metric** in the `metrics` list (if *--validation* flag is passed to the [main.py](/main.py)).
+
+- The metric being tracked is the `"<key>_mean"` value (mean across classes and validation data)
+- It is assumed to be **maximized** (higher is better)
+
+For example, if the first entry has `"key": "DSC"`, the trainer tracks `DSC_mean` on the validation set.

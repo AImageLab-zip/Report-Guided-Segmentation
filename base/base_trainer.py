@@ -42,19 +42,34 @@ class BaseTrainer:
         self.optimizer, self.lr_scheduler = OptimizerFactory.create_instance(self.model, self.config)
 
         self.loss_name, self.loss = LossFactory.create_instance(self.config)
-        self.metrics = MetricsFactory.create_instance(self.config)
-        self.test_metrics = MetricsManager(self.config,'test', **self.metrics)
-        #Append also the loss which has to be computed during the training and validation steps
-        self.metrics[self.loss_name]=self.loss
-        self.train_metrics = MetricsManager(self.config, 'train', **self.metrics)
+
+        # Metrics filtered by phase flags in config (missing flag => False)
+        train_metrics_dict = MetricsFactory.create_instance(self.config, phase="train")
+        val_metrics_dict = MetricsFactory.create_instance(self.config, phase="val") if self.validation else {}
+        test_metrics_dict = MetricsFactory.create_instance(self.config, phase="test")
+
+        # Add loss to train/val managers
+        train_metrics_dict[self.loss_name] = self.loss
         if self.validation:
-            self.val_metrics = MetricsManager(self.config, 'val', **self.metrics)
+            val_metrics_dict[self.loss_name] = self.loss
+
+        self.train_metrics = MetricsManager(self.config, "train", **train_metrics_dict)
+        if self.validation:
+            self.val_metrics = MetricsManager(self.config, "val", **val_metrics_dict)
+        self.test_metrics = MetricsManager(self.config, "test", **test_metrics_dict)
+
+        '''self.metrics = {}
+        self.metrics.update(test_metrics_dict)
+        self.metrics.update(train_metrics_dict)
+        self.metrics.update(val_metrics_dict)'''
 
         self.start_epoch = 1
         self.epochs = epochs
         self.save_period = 1
         self.save_path = save_path
+        os.makedirs(self.save_path, exist_ok=True)
         self.resume = resume
+        self.eval_metric = self.config.metrics[0]['key'] # Can be parametrized based on the metric I would choose to save best_model (now the first one is used)
         self.best_metric = 0
         self.num_classes = config.model['num_classes']
 
@@ -214,16 +229,18 @@ class BaseTrainer:
 
             if self.debug:
                 print(epoch_results)
-
+            
+            save_best = False
             if epoch % self.save_period == 0:
                 if self.validation:
                     _val_metrics = self.eval_epoch(epoch, 'val')
-                    val_metric = _val_metrics[list(self.metrics.keys())[0]] #parametrizzare sulla base di cosa voglio salvare
-                    if val_metric['DiceMetric_mean'] > self.best_metric: #parametrizzare sulla base di cosa voglio salvare
-                        self.best_metric = val_metric
-                        self._save_checkpoint(epoch, save_best=True)
+                    #val_metric = _val_metrics[list(self.metrics.keys())[0]]
+                    eval_metric_value = _val_metrics[self.eval_metric][f'{self.eval_metric}_mean']
+                    if eval_metric_value > self.best_metric:
+                        self.best_metric = eval_metric_value
+                        save_best = True
 
-            self._save_checkpoint(epoch, save_best=False)
+            self._save_checkpoint(epoch, save_best=save_best)
 
             if epoch == self.epochs:
                 self.eval_epoch(epoch, 'test')

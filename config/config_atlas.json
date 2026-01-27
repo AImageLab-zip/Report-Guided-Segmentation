@@ -15,6 +15,10 @@
         "val_ratio": 0.2,
         "transforms": "/work/grana_neuro/Brain-Segmentation/config/atlas_transforms.json"
     },
+    "classes": {
+        "0": "Background",
+        "1": "Lesion"
+    },
     "model": {
         "name": "UNet3D",
         "in_channels": 1,
@@ -33,11 +37,14 @@
         "step_size": 10,
         "gamma": 0.9
     },
-    "metrics": {
-        "name": ["DiceMetric"]
-    },
-    "classes": {
-        "0": "Background",
-        "1": "Lesion"
-    }
+    "metrics": [
+        {
+            "key": "DSC",
+            "name": "DiceMetric",
+            "params": {"include_background": false },
+            "train": true,
+            "val": true,
+            "test": true
+        }
+    ]
 }
