@@ -138,7 +138,13 @@ class Trainer_3D(BaseTrainer):
 
         for m_name in metrics_manager.metrics.keys():
             if 'loss' not in m_name.lower():
-                results[m_name] = metrics_manager.get_metric_at_epoch(f'{m_name}_mean', epoch)
+                metric_data = metrics_manager.get_metric_at_epoch(f'{m_name}_mean', epoch)
+                results[m_name] = metric_data
+                
+                # Also include aggregated_mean if it exists
+                if f'{m_name}_aggregated_mean' in metrics_manager.data.columns:
+                    aggregated_data = metrics_manager.get_metric_at_epoch(f'{m_name}_aggregated_mean', epoch)
+                    results[m_name].update(aggregated_data)
 
         return results
 

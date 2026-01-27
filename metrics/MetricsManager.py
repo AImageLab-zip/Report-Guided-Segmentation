@@ -33,6 +33,11 @@ class MetricsManager:
         if len(self.class_names) != self.num_classes:
             self.class_names = {i: self.class_names.get(i, f'class_{i}') for i in range(self.num_classes)}
 
+        # Load aggregated regions configuration (for BraTS: ET, TC, WT)
+        self.aggregated_regions = {}
+        if hasattr(config, 'aggregated_regions'):
+            self.aggregated_regions = config.aggregated_regions
+
         # Initialize DataFrame, where columns are for each metric/class and rows for each epoch
         self.data = pd.DataFrame()
         # Initialize accumulators for metrics
@@ -85,8 +90,8 @@ class MetricsManager:
                     if value_np.shape[0] == 1 and self.num_classes is not None:
                         value_np = np.repeat(value_np, self.num_classes, axis=0)
                     value_np = np.nanmean(value_np, axis=0)
-                    # Initialize accumulators if not already done
-                    for idx, val in enumerate(value_np):
+                    idx_offset = 1 if len(value_np) < self.num_classes else 0
+                    for idx, val in enumerate(value_np, start=idx_offset):
                         class_name = self.class_names.get(idx, f'class_{idx}')
                         key = f'{metric_name}_{class_name}'
                         self.metric_sums[key] = self.metric_sums.get(key, 0.0) + val
@@ -105,6 +110,69 @@ class MetricsManager:
                 # Non-tensor metric
                 self.metric_sums[metric_name] = self.metric_sums.get(metric_name, 0.0) + value
                 self.metric_counts[metric_name] = self.metric_counts.get(metric_name, 0) + 1
+        
+        # Compute aggregated region metrics if configured
+        if self.aggregated_regions:
+            self.compute_aggregated_metrics(prediction, label)
+
+    def compute_aggregated_metrics(self, prediction, label):
+        """
+        Compute metrics on aggregated regions (e.g., BraTS: ET, TC, WT).
+        Aggregated regions are defined as combinations of classes.
+        """
+        for metric_name, metric_func in self.metrics.items():
+            # Skip loss functions for aggregated metrics
+            if "loss" in metric_name.lower():
+                continue
+            
+            region_values = []
+            for region_name, class_indices in self.aggregated_regions.items():
+                # Convert prediction and label to one-hot if needed
+                if prediction.dtype in (torch.long, torch.int, torch.int32, torch.int64):
+                    pred = one_hot(prediction, num_classes=self.num_classes).float()
+                else:
+                    pred = torch.softmax(prediction, dim=1)
+                    pred = torch.argmax(pred, dim=1, keepdim=True)
+                    pred = one_hot(pred, num_classes=prediction.shape[1]).float()
+                
+                label_proc = label if label.dtype != torch.long and label.shape[1] > 1 else one_hot(label, num_classes=self.num_classes).float()
+                
+                # Aggregate the specified classes by summing their channels
+                # Result: binary mask where 1 = any of the specified classes present
+                pred_region = torch.sum(pred[:, class_indices, ...], dim=1, keepdim=True).clamp(0, 1)
+                label_region = torch.sum(label_proc[:, class_indices, ...], dim=1, keepdim=True).clamp(0, 1)
+                
+                # Convert to binary one-hot format [B, 2, ...] for background and region
+                pred_binary = torch.cat([1 - pred_region, pred_region], dim=1)
+                label_binary = torch.cat([1 - label_region, label_region], dim=1)
+                
+                # Compute metric on aggregated region
+                value = metric_func(pred_binary, label_binary)
+                
+                if isinstance(value, torch.Tensor):
+                    if value.dim() >= 1:
+                        # Take only the foreground (region) metric, not background
+                        val = value.cpu().numpy()[-1]  # Last element is the region
+                        if isinstance(val, np.ndarray):
+                            val = float(val.item()) if val.size == 1 else float(val)
+                        else:
+                            val = float(val)
+                    else:
+                        val = value.item()
+                else:
+                    val = float(value) if not isinstance(value, (int, float)) else value
+                
+                key = f'{metric_name}_{region_name}'
+                self.metric_sums[key] = self.metric_sums.get(key, 0.0) + val
+                self.metric_counts[key] = self.metric_counts.get(key, 0) + 1
+                region_values.append(val)
+            
+            # Compute mean across all aggregated regions
+            if region_values:
+                mean_value = np.nanmean(region_values)
+                key = f'{metric_name}_aggregated_mean'
+                self.metric_sums[key] = self.metric_sums.get(key, 0.0) + mean_value
+                self.metric_counts[key] = self.metric_counts.get(key, 0) + 1
 
     def compute_epoch_metrics(self, epoch):
         """
