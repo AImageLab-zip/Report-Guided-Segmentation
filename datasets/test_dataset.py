@@ -90,8 +90,50 @@ def test_BraTS2D():
     #val_loader = brats_2d.get_loader('val')
     test_loader = brats_2d.get_loader('test')
     sample = test_loader.dataset[0]
-    print("ciao")
+
+
+def test_brats3d():
+    d = DatasetFactory()
+    c = Config("/work/grana_neuro/Brain-Segmentation/config/config_brats3d.json")
+    print(c)
+    # Instantiate the Transforms
+    transforms_config = c.dataset['transforms']
+    with open(transforms_config, 'r') as f:
+        transforms_config = json.load(f)  
+    preprocessing_transforms = TransformsFactory.create_instance(transforms_config.get('preprocessing', []))
+    augmentation_transforms = TransformsFactory.create_instance(transforms_config.get('augmentations', []))
+
+    if preprocessing_transforms and augmentation_transforms:
+        train_transforms = tio.Compose([preprocessing_transforms, augmentation_transforms])
+        test_transforms = preprocessing_transforms
+    elif preprocessing_transforms:
+        train_transforms = preprocessing_transforms
+        test_transforms = preprocessing_transforms
+    elif augmentation_transforms:
+        train_transforms = augmentation_transforms
+        test_transforms = None
+    else:
+        train_transforms = None
+        test_transforms = None
+
+    brats = d.create_instance(
+        config=c,
+        validation=True,
+        train_transforms=train_transforms,
+        test_transforms=test_transforms
+    )
+
+    train_loader = brats.get_loader('train')
+    val_loader = brats.get_loader('val')
+    test_loader = brats.get_loader('test')
+
+    for idx, sample in tqdm(enumerate(train_loader), desc=f'Epoch 0', total=len(train_loader)):
+        image = sample['image'][tio.DATA].float()
+        label = sample['label'][tio.DATA].float()
+        assert image.shape == label.shape == (c.dataset['batch_size'], 4, c.dataset['patch_size'], c.dataset['patch_size'], c.dataset['patch_size'])
+        print(image.shape, label.shape)
 
 if __name__ == '__main__':
     #test_atlas()
-    test_BraTS2D()
+    #test_BraTS2D()
+    test_brats3d()

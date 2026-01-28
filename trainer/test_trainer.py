@@ -7,10 +7,12 @@ import torch
 from config import Config
 
 def test_trainer3d():
-    c = Config("/work/grana_neuro/Brain-Segmentation/config/config_atlas.json")
+    #c = Config("/work/grana_neuro/Brain-Segmentation/config/config_atlas.json")
+    c = Config("/work/grana_neuro/Brain-Segmentation/config/config_brats3d.json")
     print(c)
 
-    trainer = Trainer_3D(c, 1, True,"/work/grana_neuro/trained_models/ATLAS_2/3DUNet",resume=False, debug=True)
+    #trainer = Trainer_3D(c, 1, True,"/work/grana_neuro/trained_models/ATLAS_2/3DUNet",resume=False, debug=True)
+    trainer = Trainer_3D(c, 3, True,"/work/grana_neuro/trained_models/BraTS23/3d",resume=True, debug=True, eval_metric_type='aggregated_mean', use_wandb=True)
     trainer.train()
 
 def test_trainer2dsliced():

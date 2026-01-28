@@ -1,0 +1,65 @@
+{
+    "name": "BraTS3D_training",
+    "n_gpu": 1,
+
+    "dataset": {
+        "name": "BraTS3D",
+        "path": "/work/grana_neuro/BRATS2023_Training_nifti",
+        "patch_size": 128,
+
+        "grid_overlap": 0,
+        "queue_length": 100,
+        "samples_per_volume": 2,
+        "batch_size": 1,
+        "split_file": "/work/grana_neuro/Brain-Segmentation/split_files/BraTS23.json",
+        "val_ratio": 0.2,
+        "transforms": "/work/grana_neuro/Brain-Segmentation/config/brats3d_transforms.json"
+    },
+    "classes": {
+        "0": "Background",
+        "1": "Necrosi",
+        "2": "Edema",
+        "3": "Enhancing Tumor"
+    },
+    "aggregated_regions": {
+        "ET": [3],
+        "TC": [1, 3],
+        "WT": [1, 2, 3]
+    },
+    "model": {
+        "name": "UNet3D",
+        "in_channels": 4,
+        "num_classes": 4,
+        "size": 32
+    },
+    "loss": {
+        "name": "DiceCELoss"
+    },
+    "optimizer": {
+        "name": "RAdam",
+        "lr": 0.0003
+    },
+    "scheduler": {
+        "name": "StepLR",
+        "step_size": 10,
+        "gamma": 0.9
+    },
+    "metrics": [
+        {
+            "key": "DSC",
+            "name": "DiceMetric",
+            "params": { "include_background": false },
+            "train": true,
+            "val": true,
+            "test": true
+        },
+        {
+            "key": "HD95",
+            "name": "HausdorffDistanceMetric",
+            "params": {"percentile": 95},
+            "train": false,
+            "val": true,
+            "test": true
+        }
+    ]
+}
