@@ -118,6 +118,11 @@ requirements_old.txt
 debug.sh
 run.sh
 wandb/
+jobs/
+logs/
+QaTaCov19-v2/
+config/config_qatacov_preprocess.json
+datasets/test_qatacov.py
 
 # editor, os cache directory
 .vscode/
