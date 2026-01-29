@@ -28,7 +28,7 @@ class BaseTrainer:
     """
     # Mandatory parameters not specified in the config file, must be passed as CL params when calling the main.py
     # If too many params it is possible to specify them in another file
-    def __init__(self, config, epochs, validation, save_path, resume=False, debug=False, eval_metric_type='mean', use_wandb=False, **kwargs):
+    def __init__(self, config, epochs, validation, save_path, resume=False, debug=False, eval_metric_type='mean', use_wandb=False, val_every=1, **kwargs):
         """
         Initialize the Trainer with model, optimizer, scheduler, loss, metrics and weights using the config file
         """
@@ -63,7 +63,7 @@ class BaseTrainer:
 
         self.start_epoch = 1
         self.epochs = epochs
-        self.save_period = 1
+        self.val_every = val_every
         self.save_path = save_path
         os.makedirs(self.save_path, exist_ok=True)
         self.resume = resume
@@ -268,7 +268,7 @@ class BaseTrainer:
                 self.train_metrics.log_to_wandb(epoch)
             
             save_best = False
-            if epoch % self.save_period == 0:
+            if epoch % self.val_every == 0:
                 if self.validation:
                     _val_metrics = self.eval_epoch(epoch, 'val')
                     if self.use_wandb:
