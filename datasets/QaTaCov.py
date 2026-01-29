@@ -177,7 +177,27 @@ class QaTaCov2DSet(Dataset):
         label_tensor = torch.from_numpy(
             np.array(Image.open(mask_path).convert('L'), dtype=np.float32)
         ).unsqueeze(0)
-        
+
+        # Apply transforms if any
+        if self.transform is not None:
+            if image_tensor.dim() == 3:
+                image_tensor = image_tensor.unsqueeze(-1)
+            if label_tensor.dim() == 3:
+                label_tensor = label_tensor.unsqueeze(-1)
+
+            subject = tio.Subject(
+                image=tio.ScalarImage(tensor=image_tensor),
+                label=tio.LabelMap(tensor=label_tensor)
+            )
+            transformed = self.transform(subject)
+            image_tensor = transformed['image'].data
+            label_tensor = transformed['label'].data
+
+            if image_tensor.dim() == 4 and image_tensor.shape[-1] == 1:
+                image_tensor = image_tensor.squeeze(-1)
+            if label_tensor.dim() == 4 and label_tensor.shape[-1] == 1:
+                label_tensor = label_tensor.squeeze(-1)
+
         image = image_tensor
         gt = label_tensor
 

@@ -3,12 +3,13 @@
     "n_gpu": 1,
 
     "dataset": {
-        "name": "QaTaCOV",
-        "path": "/work/tesi_ocarpentiero/brats3d/train_gli_norm",
+        "name": "QaTaCov",
+        "path": "/leonardo_work/IscrC_narc2/reports_project/QaTa-COV19/QaTa-COV19-v2_preprocessed",
+        "split_file": "/leonardo_work/IscrC_narc2/reports_project/QaTa-COV19/QaTa-COV19-v2_preprocessed/qatacov_split.xlsx",
 
-        "batch_size": 2,
-        "split_file": "/work/grana_neuro/Brain-Segmentation/split_files/BraTS23.json",
-        "transforms": "/work/grana_neuro/Brain-Segmentation/config/brats2d_transforms.json"
+        "batch_size": 32,
+        "image_size": [224, 224],
+        "transforms": "config/qatacov2d_transforms.json"
     },
     "classes": {
         "0": "Background",
