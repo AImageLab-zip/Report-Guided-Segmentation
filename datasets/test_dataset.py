@@ -133,7 +133,45 @@ def test_brats3d():
         assert image.shape == label.shape == (c.dataset['batch_size'], 4, c.dataset['patch_size'], c.dataset['patch_size'], c.dataset['patch_size'])
         print(image.shape, label.shape)
 
+
+def test_qatacov():
+    d = DatasetFactory()
+    c = Config("../config/config_qatacov2d.json")
+    print(c)
+
+    transforms_config = c.dataset['transforms']
+    with open(transforms_config, 'r') as f:
+        transforms_config = json.load(f)
+
+    augmentation_transforms = TransformsFactory.create_instance(transforms_config.get('augmentations', []))
+
+    if augmentation_transforms:
+        train_transforms = augmentation_transforms
+        test_transforms = None
+    else:
+        train_transforms = None
+        test_transforms = None
+
+    qatacov = d.create_instance(
+        config=c,
+        validation=True,
+        train_transforms=train_transforms,
+        test_transforms=test_transforms
+    )
+
+    train_loader = qatacov.get_loader('train')
+    val_loader = qatacov.get_loader('val')
+    test_loader = qatacov.get_loader('test')
+
+    sample = next(iter(train_loader))
+    image = sample['image']
+    label = sample['label']
+    assert image.shape[0] == c.dataset['batch_size']
+    assert image.shape == label.shape
+    print(image.shape, label.shape)
+
 if __name__ == '__main__':
     #test_atlas()
     #test_BraTS2D()
-    test_brats3d()
+    #test_brats3d()
+    test_qatacov()
