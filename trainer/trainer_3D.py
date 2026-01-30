@@ -44,7 +44,7 @@ class Trainer_3D(BaseTrainer):
 
         # After all iterations in the epoch, compute and store the epoch metrics
         self.train_metrics.compute_epoch_metrics(epoch)
-        #self.train_metrics.log_to_wandb()
+   
         self.train_metrics.save_to_csv(self.save_path)
         results = self._results_dict('train', epoch)
 
@@ -90,14 +90,10 @@ class Trainer_3D(BaseTrainer):
 
             # Pass raw predictions (logits) to metrics - they handle conversion as needed
             metrics_manager.update_metrics(prediction, label)
-            #self.val_metrics.update_metrics(prediction, label)
 
         # After all iterations in the epoch, compute and store the epoch metrics
         metrics_manager.compute_epoch_metrics(epoch)
-        #self.val_metrics.compute_epoch_metrics(epoch)
-        #metrics_manager.log_to_wandb()
         metrics_manager.save_to_csv(self.save_path)
-        #self.val_metrics.save_to_csv(self.save_path)
 
         results = self._results_dict(phase, epoch)
 
