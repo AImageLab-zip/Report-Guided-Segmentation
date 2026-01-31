@@ -87,7 +87,7 @@ class UNet2D(BaseModel):
         self.decoder['0'] = UpConvBlock([self.size*4 + self.size*2, self.size*2],
                                         [self.size*2, self.size*2],
                                         up_conv=False)
-        self.out_layer = ConvBlock(self.size*2, self.out_channels, conv_kwargs={'kernel_size': 1, 'stride': 1, 'padding': 0})
+        self.out_layer = nn.Conv2d(self.size * 2, self.out_channels, kernel_size=1, stride=1, padding=0)
 
 
     def forward(self, x):
