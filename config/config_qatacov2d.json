@@ -4,8 +4,8 @@
 
     "dataset": {
         "name": "QaTaCov",
-        "path": "/leonardo_work/IscrC_narc2/reports_project/QaTa-COV19/QaTa-COV19-v2_preprocessed",
-        "split_file": "/leonardo_work/IscrC_narc2/reports_project/QaTa-COV19/QaTa-COV19-v2_preprocessed/qatacov_split.xlsx",
+        "path": "/leonardo_work/IscrC_narc2/reports_project/QaTa-COV19/QaTa-COV19-v2_preprocessed_gt",
+        "split_file": "/leonardo_work/IscrC_narc2/reports_project/QaTa-COV19/QaTa-COV19-v2_preprocessed_gt/qatacov_split.xlsx",
 
         "batch_size": 32,
         "image_size": [224, 224],
@@ -23,10 +23,10 @@
         "depth": 5
     },
     "loss": {
-        "name": "DiceCELoss"
+    "name": "DiceCELoss"
     },
     "optimizer": {
-        "name": "RAdam",
+        "name": "AdamW",
         "lr": 0.0003
     },
     "scheduler": {
@@ -38,7 +38,7 @@
         {
             "key": "DSC",
             "name": "DiceMetric",
-            "params": { "include_background": false },
+            "params": { "include_background": false},
             "train": true,
             "val": true,
             "test": true
@@ -46,7 +46,7 @@
         {
             "key": "HD95",
             "name": "HausdorffDistanceMetric",
-            "params": {"percentile": 95},
+            "params": { "percentile": 95, "include_background": false},
             "train": false,
             "val": true,
             "test": true

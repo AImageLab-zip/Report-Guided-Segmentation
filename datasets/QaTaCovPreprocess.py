@@ -193,7 +193,7 @@ class QaTaCov2DSet(Dataset):
 
         image = data['image']
         gt = data['gt']
-        gt = torch.where(gt == 255, 1, 0)
+        #gt = torch.where(gt == 255, 1, 0)
 
         sample = {
             'image': image,

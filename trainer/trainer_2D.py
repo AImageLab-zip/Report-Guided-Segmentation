@@ -4,13 +4,13 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 import torch
 import torch.nn.functional as F
-from base.base_trainer import BaseTrainer
+from base.base_trainer_2d import BaseTrainer2D
 from tqdm import tqdm
 import torchio as tio
 from utils.util import _onehot_enc_2d
 
 
-class Trainer_2D(BaseTrainer):
+class Trainer_2D(BaseTrainer2D):
     """
     Trainer class which implements a Basetrainer for full 2D images.
     """
@@ -23,17 +23,25 @@ class Trainer_2D(BaseTrainer):
         :return: A log that contains average loss and metric in this epoch.
         """
         self.model.train()
+        epoch_loss = 0.0
+        n_batches = 0
 
         for idx, sample in tqdm(enumerate(self.train_loader), desc=f'Epoch {epoch}', total=len(self.train_loader)):
             image = sample['image'].float().to(self.device)
             label_raw = sample['label'].float().to(self.device)
-            label = _onehot_enc_2d(label_raw, self.num_classes)
+            label = _onehot_enc_2d(label_raw)
 
             prediction = self.model(image)
+
+            print("Label shape", label.shape)
+            print("Prediction shape:", prediction.shape)
 
             loss = self.loss(prediction, label)
             if self.debug:
                 print(f"E: {epoch}\tI: {idx}\tL: {loss.item()}")
+
+            epoch_loss += loss.item()
+            n_batches += 1
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -46,7 +54,9 @@ class Trainer_2D(BaseTrainer):
         self.train_metrics.compute_epoch_metrics(epoch)
         #self.train_metrics.log_to_wandb()
         self.train_metrics.save_to_csv(self.save_path)
-        results = self._results_dict('train', epoch)
+
+        mean_loss = epoch_loss / max(1, n_batches)
+        results = self._results_dict('train', epoch, mean_loss=mean_loss)
 
         if self.debug:
             print(results)
@@ -67,6 +77,8 @@ class Trainer_2D(BaseTrainer):
         """
         assert phase in ['val', 'test'], f'phase should be val, or test, passed: {phase}'
         self.model.eval()
+        epoch_loss = 0.0
+        n_batches = 0
         loader = getattr(self, f'{phase}_loader')
         metrics_manager = getattr(self, f'{phase}_metrics')
 
@@ -75,6 +87,11 @@ class Trainer_2D(BaseTrainer):
             label = sample['label'].long().to(self.device)
             prediction = self.model(image)
 
+            loss = self.loss(prediction, label)
+
+            epoch_loss += loss.item()
+            n_batches += 1
+
             metrics_manager.update_metrics(prediction, label)
 
         # After all iterations in the epoch, compute and store the epoch metrics
@@ -82,24 +99,20 @@ class Trainer_2D(BaseTrainer):
         #metrics_manager.log_to_wandb()
         metrics_manager.save_to_csv(self.save_path)
 
-        results = self._results_dict(phase, epoch)
+        mean_loss = epoch_loss / max(1, n_batches)
+
+        results = self._results_dict(phase, epoch, mean_loss=mean_loss)
 
         return results
 
-    def _results_dict(self, phase, epoch):
+    def _results_dict(self, phase, epoch, mean_loss=None):
         metrics_manager = getattr(self, f'{phase}_metrics')
-        if phase in ['train', 'val']:
-            results = {self.loss_name: metrics_manager.get_metric_at_epoch(self.loss_name, epoch)}
-        else:
-            results = {}
+        results = {}
+        # Only include loss when provided (train/val)
+        if mean_loss is not None:
+            results[self.loss_name] = {self.loss_name: float(mean_loss)}  # keep your dict-of-dicts style
 
         for m_name in metrics_manager.metrics.keys():
-            if 'loss' not in m_name.lower():
-                metric_data = metrics_manager.get_metric_at_epoch(f'{m_name}_mean', epoch)
-                results[m_name] = metric_data
-
-                if f'{m_name}_aggregated_mean' in metrics_manager.data.columns:
-                    aggregated_data = metrics_manager.get_metric_at_epoch(f'{m_name}_aggregated_mean', epoch)
-                    results[m_name].update(aggregated_data)
-
+            metric_data = metrics_manager.get_metric_at_epoch(f'{m_name}_mean', epoch)
+            results[m_name] = metric_data
         return results

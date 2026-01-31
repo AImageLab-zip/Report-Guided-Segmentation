@@ -10,6 +10,8 @@ from tqdm import tqdm
 import json
 from transforms import TransformsFactory
 
+from PIL import Image
+
 def test_atlas():
     d = DatasetFactory()
     c = Config("/work/grana_neuro/Brain-Segmentation/config/config_atlas.json")
@@ -136,14 +138,14 @@ def test_brats3d():
 
 def test_qatacov():
     d = DatasetFactory()
-    c = Config("../config/config_qatacov2d.json")
+    c = Config("./config/config_qatacov2d.json")
     print(c)
 
     transforms_config = c.dataset['transforms']
     with open(transforms_config, 'r') as f:
         transforms_config = json.load(f)
 
-    augmentation_transforms = TransformsFactory.create_instance(transforms_config.get('augmentations', []))
+    augmentation_transforms = TransformsFactory.create_instance(transforms_config.get('preprocessing', []), backend='monai')
 
     if augmentation_transforms:
         train_transforms = augmentation_transforms
@@ -168,6 +170,14 @@ def test_qatacov():
     label = sample['label']
     assert image.shape[0] == c.dataset['batch_size']
     assert image.shape == label.shape
+
+    image = (image[0].numpy() * 255).astype('uint8').squeeze()
+    label = (label[0].numpy() * 255).astype('uint8').squeeze()
+
+    #save the first image and label
+    Image.fromarray(image).save("test_image_0.png")
+    Image.fromarray(label).save("test_label_0.png")
+
     print(image.shape, label.shape)
 
 if __name__ == '__main__':

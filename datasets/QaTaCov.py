@@ -6,7 +6,6 @@ from typing import Dict, List, Optional, Tuple
 import pandas as pd
 import torch
 import numpy as np
-import torchio as tio
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 
@@ -145,6 +144,44 @@ class QaTaCov(BaseDataset):
             num_workers=self.NUM_WORKERS,
             pin_memory=False
         )
+    
+
+    def get_class_weights(self) -> torch.Tensor:
+        """
+        Compute inverse-frequency class weights from 2D binary masks.
+        Assumes lesion pixels are >0 in the stored mask PNG.
+        Returns weights tensor of shape [2]: [w_bg, w_lesion]
+        """
+        class_counts = {0: 0, 1: 0}
+        total_pixels = 0
+
+        print("Calculating class weights from masks...")
+        for i, mask_path in enumerate(self.mask_paths):
+            if i % 200 == 0:
+                print(f"Processed {i}/{len(self.mask_paths)} masks")
+
+            mask = np.array(Image.open(mask_path).convert("L"), dtype=np.uint8)
+            lesion = (mask > 0).astype(np.uint8)  # 0/1
+
+            num_lesion = int(lesion.sum())
+            num_bg = int(lesion.size - num_lesion)
+
+            class_counts[0] += num_bg
+            class_counts[1] += num_lesion
+            total_pixels += lesion.size
+
+        # inverse frequency (normalized by number of classes)
+        num_classes = 2
+        weights = torch.ones(num_classes, dtype=torch.float32)
+
+        for cls in [0, 1]:
+            count = max(1, class_counts[cls])
+            weights[cls] = total_pixels / (num_classes * count)
+
+        print(f"Class distribution (pixels): {class_counts}")
+        print(f"Class weights: {weights.tolist()}")
+
+        return weights
 
 
 class QaTaCov2DSet(Dataset):
@@ -172,46 +209,34 @@ class QaTaCov2DSet(Dataset):
         mask_path = self.mask_paths[idx]
 
         image_tensor = torch.from_numpy(
-            np.array(Image.open(image_path).convert('L'), dtype=np.float32)
-        ).unsqueeze(0)
+            np.array(Image.open(image_path).convert("L"), dtype=np.float32)
+        ).unsqueeze(0)  # [1,H,W]
+
         label_tensor = torch.from_numpy(
-            np.array(Image.open(mask_path).convert('L'), dtype=np.float32)
-        ).unsqueeze(0)
+            np.array(Image.open(mask_path).convert("L"), dtype=np.float32)
+        ).unsqueeze(0)  # [1,H,W]
 
-        # Apply transforms if any
+        
+        sample = {"image": image_tensor, "label": label_tensor}
+
         if self.transform is not None:
-            if image_tensor.dim() == 3:
-                image_tensor = image_tensor.unsqueeze(-1)
-            if label_tensor.dim() == 3:
-                label_tensor = label_tensor.unsqueeze(-1)
+            sample = self.transform(sample)
 
-            subject = tio.Subject(
-                image=tio.ScalarImage(tensor=image_tensor),
-                label=tio.LabelMap(tensor=label_tensor)
-            )
-            transformed = self.transform(subject)
-            image_tensor = transformed['image'].data
-            label_tensor = transformed['label'].data
+        image_tensor = sample["image"]
+        gt = sample["label"]
 
-            if image_tensor.dim() == 4 and image_tensor.shape[-1] == 1:
-                image_tensor = image_tensor.squeeze(-1)
-            if label_tensor.dim() == 4 and label_tensor.shape[-1] == 1:
-                label_tensor = label_tensor.squeeze(-1)
 
-        image = image_tensor
-        gt = label_tensor
-
-        gt = (gt > 0).float()
+        gt = (gt > 0).long()
 
         sample = {
-            'image': image,
-            'label': gt,
-            'image_path': image_path,
-            'label_path': mask_path,
+            "image": image_tensor,   # float in [0,1]
+            "label": gt,             # float in {0,1}
+            "image_path": image_path,
+            "label_path": mask_path,
         }
 
         if self.report_map:
             image_name = os.path.basename(image_path)
-            sample['text'] = self.report_map.get(image_name, '')
+            sample["text"] = self.report_map.get(image_name, "")
 
         return sample

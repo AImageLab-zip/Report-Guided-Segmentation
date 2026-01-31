@@ -1,31 +1,31 @@
 {
-  "preprocessing": [],
+  "backend": "monai",
+  "keys": ["image", "label"],
+
+  "preprocessing": [
+      { "name": "ScaleIntensityRanged", "params": { "a_min": 0, "a_max": 255, "b_min": 0.0, "b_max": 1.0, "clip": true } }
+    ],
 
   "augmentations": [
     {
-      "name": "RandomAffine",
+      "name": "RandAffined",
       "params": {
-        "scales": [0.98, 1.02],
-        "degrees": [-5, 5],
-        "translation": [-5, 5],
-        "image_interpolation": "linear",
-        "p": 0.5
+        "prob": 0.5,
+        "rotate_range": [0.0873, 0.0873],
+        "translate_range": [5, 5],
+        "scale_range": [0.02, 0.02],
+        "mode": ["bilinear", "nearest"],
+        "padding_mode": "zeros",
+        "keys": ["image", "label"]
       }
     },
     {
-      "name": "RandomGamma",
-      "params": {
-        "log_gamma": [-0.1, 0.1],
-        "p": 0.3
-      }
+      "name": "RandAdjustContrastd",
+      "params": { "prob": 0.3, "gamma": [0.9, 1.1], "keys": ["image"] }
     },
     {
-      "name": "RandomNoise",
-      "params": {
-        "mean": 0.0,
-        "std": [0.0, 0.02],
-        "p": 0.3
-      }
+      "name": "RandGaussianNoised",
+      "params": { "prob": 0.3, "std": 0.02, "mean": 0.0, "keys": ["image"] }
     }
   ]
 }

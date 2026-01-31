@@ -36,9 +36,9 @@ def save_sample(sample, out_dir: str, split: str, index: int, preserve_filenames
     image = image.squeeze(0).cpu().numpy()
     label = label.squeeze(0).cpu().numpy()
 
-    image = (image - image.min()) / (image.max() - image.min() + 1e-8)
-    image = (image * 255).astype(np.uint8)
-    label = (label * 255).astype(np.uint8)
+    #image = (image - image.min()) / (image.max() - image.min() + 1e-8)
+    image = (image).astype(np.uint8)
+    label = label.astype(np.uint8)
 
     images_dir = os.path.join(out_dir, 'Images')
     masks_dir = os.path.join(out_dir, 'Ground-truths')

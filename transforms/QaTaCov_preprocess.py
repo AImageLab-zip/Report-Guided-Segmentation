@@ -6,7 +6,6 @@ from monai.transforms import (
     Resized,
     NormalizeIntensityd,
     ToTensord,
-    Rotate90d,
     Lambdad
 )
 from base.base_transforms_2d import BaseTransforms2D
@@ -50,12 +49,12 @@ class QaTaCov(BaseTransforms2D):
             - ToTensord: Convert to PyTorch tensors
         """
         trans = Compose([
-                LoadImaged(keys=["image","gt"], reader="ITKReader", image_only=False),
+                LoadImaged(keys=["image","gt"], reader="PILReader", image_only=False),
                 Lambdad(keys=["image","gt"], func=lambda x: x.transpose(0,2,1) if x.ndim==3 else x.T),
                 EnsureChannelFirstd(["image", "gt"]),
                 Resized(["image"], spatial_size=image_size, mode='bicubic'),
                 Resized(["gt"], spatial_size=image_size, mode='nearest'),
-                NormalizeIntensityd(['image'], channel_wise=True),
+                #NormalizeIntensityd(['image'], channel_wise=True),
                 ToTensord(["image", "gt"]),
             ])
         return trans

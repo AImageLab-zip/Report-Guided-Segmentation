@@ -19,11 +19,11 @@ from models import ModelFactory
 from losses import LossFactory
 from optimizers import OptimizerFactory
 from datasets import DatasetFactory
-from metrics import MetricsFactory, MetricsManager
+from metrics import MetricsFactory, MetricsManager2D
 from transforms import TransformsFactory
 
 
-class BaseTrainer:
+class BaseTrainer2D:
     """
     Base class for all trainers
     """
@@ -52,15 +52,10 @@ class BaseTrainer:
         val_metrics_dict = MetricsFactory.create_instance(self.config, phase="val") if self.validation else {}
         test_metrics_dict = MetricsFactory.create_instance(self.config, phase="test")
 
-        # Add loss to train/val managers
-        train_metrics_dict[self.loss_name] = self.loss
+        self.train_metrics = MetricsManager2D(self.config, "train", lesion_index=1, **train_metrics_dict)
         if self.validation:
-            val_metrics_dict[self.loss_name] = self.loss
-
-        self.train_metrics = MetricsManager(self.config, "train", **train_metrics_dict)
-        if self.validation:
-            self.val_metrics = MetricsManager(self.config, "val", **val_metrics_dict)
-        self.test_metrics = MetricsManager(self.config, "test", **test_metrics_dict)
+            self.val_metrics = MetricsManager2D(self.config, "val", lesion_index=1, **val_metrics_dict)
+        self.test_metrics = MetricsManager2D(self.config, "test", lesion_index=1, **test_metrics_dict)
 
         self.start_epoch = 1
         self.epochs = epochs
