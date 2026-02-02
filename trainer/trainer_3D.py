@@ -44,7 +44,7 @@ class Trainer_3D(BaseTrainer):
 
         # After all iterations in the epoch, compute and store the epoch metrics
         self.train_metrics.compute_epoch_metrics(epoch)
-        #self.train_metrics.log_to_wandb()
+   
         self.train_metrics.save_to_csv(self.save_path)
         results = self._results_dict('train', epoch)
 
@@ -90,14 +90,10 @@ class Trainer_3D(BaseTrainer):
 
             # Pass raw predictions (logits) to metrics - they handle conversion as needed
             metrics_manager.update_metrics(prediction, label)
-            #self.val_metrics.update_metrics(prediction, label)
 
         # After all iterations in the epoch, compute and store the epoch metrics
         metrics_manager.compute_epoch_metrics(epoch)
-        #self.val_metrics.compute_epoch_metrics(epoch)
-        #metrics_manager.log_to_wandb()
         metrics_manager.save_to_csv(self.save_path)
-        #self.val_metrics.save_to_csv(self.save_path)
 
         results = self._results_dict(phase, epoch)
 
@@ -105,10 +101,21 @@ class Trainer_3D(BaseTrainer):
 
     def _inference_sampler(self, sample: tio.Subject):
 
+        patch_size_value = self.config.dataset['patch_size']
+        if isinstance(patch_size_value, int):
+            patch_size = (patch_size_value, patch_size_value, patch_size_value)
+        else:
+            patch_size = tuple(patch_size_value)
+        image_shape = sample.spatial_shape
+
+        # Ensure patch size is not larger than image size by padding if needed
+        if any(p > s for p, s in zip(patch_size, image_shape)):
+            sample = tio.CropOrPad(patch_size)(sample)
+
         # Grid samplers are useful to perform inference using all patches from a volume
         grid_sampler = tio.data.GridSampler(
             sample,
-            self.config.dataset['patch_size'],
+            patch_size,
             self.config.dataset['grid_overlap']
         )
 

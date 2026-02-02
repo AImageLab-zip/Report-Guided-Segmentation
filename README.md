@@ -94,6 +94,7 @@ Command line arguments implemented in the provided main.py file:
 - `--save_path`: Directory to save model checkpoints (required)
 - `--trainer`: Trainer class name (required)
 - `--validation`: Enable validation during training (flag)
+- `--val_every`: Run validation every N epochs (default: 1)
 - `--resume`: Resume training from last checkpoint (flag)
 - `--debug`: Enable debug mode with verbose output (flag)
 - `--eval_metric_type`: Metric type for model selection - `mean` (per-class mean) or `aggregated_mean` (aggregated regions mean) (default: `mean`)
@@ -110,8 +111,9 @@ python main.py \
   --config config/config_atlas.json \
   --epochs 100 \
   --save_path /folder_containing_model_last.pth \
-  --trainer trainer_3D \
+  --trainer Trainer_3D \
   --validation \
+  --val_every 2 \
   --resume \
   --wandb
 ```

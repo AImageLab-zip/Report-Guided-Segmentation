@@ -65,7 +65,7 @@ class BaseTrainer:
 
         self.start_epoch = 1
         self.epochs = epochs
-        self.save_period = 1
+        self.val_every = val_every
         self.save_path = save_path
         os.makedirs(self.save_path, exist_ok=True)
         self.resume = resume
@@ -276,7 +276,7 @@ class BaseTrainer:
                 self.train_metrics.log_to_wandb(epoch)
             
             save_best = False
-            if epoch % self.save_period == 0:
+            if epoch % self.val_every == 0:
                 if self.validation:
                     _val_metrics = self.eval_epoch(epoch, 'val')
                     if self.use_wandb:

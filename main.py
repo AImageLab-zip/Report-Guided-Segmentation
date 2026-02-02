@@ -46,6 +46,12 @@ def parse_args():
         help='Enable validation during training'
     )
     parser.add_argument(
+        '--val_every',
+        type=int,
+        default=1,
+        help='Run validation every N epochs (default: 1)'
+    )
+    parser.add_argument(
         '--resume',
         action='store_true',
         help='Resume training from last checkpoint in save_path'

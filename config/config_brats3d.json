@@ -30,19 +30,25 @@
         "name": "UNet3D",
         "in_channels": 4,
         "num_classes": 4,
-        "size": 32
+        "size": 32,
+        "depth": 4
     },
     "loss": {
-        "name": "DiceCELoss"
+        "name": "DiceFocalLoss",
+        "include_background": false,
+        "softmax": true
     },
     "optimizer": {
-        "name": "RAdam",
-        "lr": 0.0003
+        "name": "SGD",
+        "lr": 0.01,
+        "momentum": 0.99,
+        "weight_decay": 0.00003,
+        "nesterov": true
     },
     "scheduler": {
-        "name": "StepLR",
-        "step_size": 10,
-        "gamma": 0.9
+        "name": "PolynomialLR",
+        "total_iters": 65700,
+        "power": 0.9
     },
     "metrics": [
         {
