@@ -16,6 +16,10 @@ Trainer for 3D volume segmentation.
 
 Trainer for 2D slice-based segmentation.
 
+🏋🏼‍♂️ **[trainer_2D.py](trainer_2D.py):**
+
+Trainer for full 2D image segmentation (e.g., QaTaCov chest X-rays) without patch-based inference.
+
 ## Implementing a Custom Trainer
 
 1. Create a new file in `trainer/` with your trainer class that inherits from [`BaseTrainer`](../base/base_trainer.py)

@@ -10,6 +10,7 @@ import torchio as tio
 import numpy as np
 import wandb
 from collections import defaultdict
+from monai.transforms import Compose as MonaiCompose
 
 from torch.utils.data import DataLoader
 
@@ -28,7 +29,7 @@ class BaseTrainer:
     """
     # Mandatory parameters not specified in the config file, must be passed as CL params when calling the main.py
     # If too many params it is possible to specify them in another file
-    def __init__(self, config, epochs, validation, save_path, resume=False, debug=False, eval_metric_type='mean', use_wandb=False, val_every=1, **kwargs):
+    def __init__(self, config, epochs, validation, val_every, save_path, resume=False, debug=False, eval_metric_type='mean', use_wandb=False, save_visualizations = False, **kwargs):
         """
         Initialize the Trainer with model, optimizer, scheduler, loss, metrics and weights using the config file
         """
@@ -39,6 +40,7 @@ class BaseTrainer:
         self.eval_metric_type = eval_metric_type
         self.use_wandb = use_wandb
         self.wandb_run_id = None
+        self.save_visualizations = save_visualizations
 
         self.model = ModelFactory.create_instance(self.config).to(self.device)
 
@@ -92,13 +94,19 @@ class BaseTrainer:
         with open(transforms_path, 'r') as f:
             transforms_config = json.load(f)
 
-        preprocessing_transforms = TransformsFactory.create_instance(transforms_config.get('preprocessing', []))
-        augmentation_transforms = TransformsFactory.create_instance(transforms_config.get('augmentations', []))
+        backend = transforms_config.get("backend", "torchio")
+        default_keys = tuple(transforms_config.get("keys", ["image", "label"]))
+
+        preprocessing_transforms = TransformsFactory.create_instance(transforms_config.get('preprocessing', []), backend=backend, default_keys=default_keys)
+        augmentation_transforms = TransformsFactory.create_instance(transforms_config.get('augmentations', []), backend=backend, default_keys=default_keys)
 
         # Compose the final transforms
         # For training: preprocessing + augmentations
         if preprocessing_transforms and augmentation_transforms:
-            self.train_transforms = tio.Compose([preprocessing_transforms, augmentation_transforms])
+            if backend == "torchio":
+                self.train_transforms = tio.Compose([preprocessing_transforms, augmentation_transforms])
+            else:
+                self.train_transforms = MonaiCompose([preprocessing_transforms, augmentation_transforms])
             self.test_transforms = preprocessing_transforms
         elif preprocessing_transforms:
             self.train_transforms = preprocessing_transforms

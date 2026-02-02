@@ -1,8 +1,10 @@
 import sys
 import os
-from trainer import Trainer_3D, Trainer_2Dsliced
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from trainer import Trainer_3D, Trainer_2Dsliced
+from trainer import Trainer_2D
 import torch
 from config import Config
 
@@ -22,5 +24,13 @@ def test_trainer2dsliced():
     trainer = Trainer_2Dsliced(c, 1, True,"/work/grana_neuro/trained_models/BraTS23/2d",resume=False, debug=True)
     trainer.train()
 
-test_trainer3d()
+def test_trainer2d():
+    c = Config("../config/config_qatacov2d.json")
+    print(c)
+
+    trainer = Trainer_2D(c, 1, True,"/leonardo_work/IscrC_narc2/reports_project/trained_models/QaTaCov2D",resume=False, debug=True)
+    trainer.train()
+
+#test_trainer3d()
 #test_trainer2dsliced()
+test_trainer2d()
