@@ -101,10 +101,21 @@ class Trainer_3D(BaseTrainer):
 
     def _inference_sampler(self, sample: tio.Subject):
 
+        patch_size_value = self.config.dataset['patch_size']
+        if isinstance(patch_size_value, int):
+            patch_size = (patch_size_value, patch_size_value, patch_size_value)
+        else:
+            patch_size = tuple(patch_size_value)
+        image_shape = sample.spatial_shape
+
+        # Ensure patch size is not larger than image size by padding if needed
+        if any(p > s for p, s in zip(patch_size, image_shape)):
+            sample = tio.CropOrPad(patch_size)(sample)
+
         # Grid samplers are useful to perform inference using all patches from a volume
         grid_sampler = tio.data.GridSampler(
             sample,
-            self.config.dataset['patch_size'],
+            patch_size,
             self.config.dataset['grid_overlap']
         )
 
