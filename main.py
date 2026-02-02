@@ -67,6 +67,11 @@ def parse_args():
         action='store_true',
         help='Enable Weights & Biases logging'
     )    
+    parser.add_argument(
+        '--save_visualizations',
+        action='store_true',
+        help='Enable saving of visualizations during validation'
+    )
     return parser.parse_args()
 
 
@@ -97,6 +102,7 @@ def main():
         resume=args.resume,
         debug=args.debug,
         eval_metric_type=args.eval_metric_type,
+        save_visualizations = args.save_visualizations,
         use_wandb=args.wandb
     )
     try:

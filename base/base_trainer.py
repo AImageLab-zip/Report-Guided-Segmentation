@@ -29,7 +29,7 @@ class BaseTrainer:
     """
     # Mandatory parameters not specified in the config file, must be passed as CL params when calling the main.py
     # If too many params it is possible to specify them in another file
-    def __init__(self, config, epochs, validation, save_path, resume=False, debug=False, eval_metric_type='mean', use_wandb=False, **kwargs):
+    def __init__(self, config, epochs, validation, save_path, resume=False, debug=False, eval_metric_type='mean', use_wandb=False, save_visualizations = False, **kwargs):
         """
         Initialize the Trainer with model, optimizer, scheduler, loss, metrics and weights using the config file
         """
@@ -40,6 +40,7 @@ class BaseTrainer:
         self.eval_metric_type = eval_metric_type
         self.use_wandb = use_wandb
         self.wandb_run_id = None
+        self.save_visualizations = save_visualizations
 
         self.model = ModelFactory.create_instance(self.config).to(self.device)
 

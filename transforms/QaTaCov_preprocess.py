@@ -45,7 +45,6 @@ class QaTaCov(BaseTransforms2D):
             - EnsureChannelFirstd: Ensure channel-first format (C, H, W)
             - RandZoomd (train only): Random zoom augmentation (0.95-1.2x)
             - Resized: Resize to target image size
-            - NormalizeIntensityd: Channel-wise intensity normalization
             - ToTensord: Convert to PyTorch tensors
         """
         trans = Compose([
@@ -54,7 +53,6 @@ class QaTaCov(BaseTransforms2D):
                 EnsureChannelFirstd(["image", "gt"]),
                 Resized(["image"], spatial_size=image_size, mode='bicubic'),
                 Resized(["gt"], spatial_size=image_size, mode='nearest'),
-                #NormalizeIntensityd(['image'], channel_wise=True),
                 ToTensord(["image", "gt"]),
             ])
         return trans

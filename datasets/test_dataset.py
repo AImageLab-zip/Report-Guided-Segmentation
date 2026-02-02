@@ -168,6 +168,7 @@ def test_qatacov():
     sample = next(iter(train_loader))
     image = sample['image']
     label = sample['label']
+    text = sample['text']
     assert image.shape[0] == c.dataset['batch_size']
     assert image.shape == label.shape
 
@@ -179,6 +180,7 @@ def test_qatacov():
     Image.fromarray(label).save("test_label_0.png")
 
     print(image.shape, label.shape)
+    print(text[0])
 
 if __name__ == '__main__':
     #test_atlas()
