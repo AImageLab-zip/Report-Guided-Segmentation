@@ -1,37 +1,70 @@
 {
-  "preprocessing": [],
+  "preprocessing": [
+    {
+      "name": "ToCanonical",
+      "params": {}
+    }
+  ],
 
   "augmentations": [
     {
       "name": "RandomAffine",
       "params": {
-        "scales": [0.5, 1.5],
-        "degrees": [10, 10],
+        "scales": [0.9, 1.1],
+        "degrees": [10, 10, 10],
+        "translation": [5, 5, 5],
         "isotropic": false,
         "image_interpolation": "linear",
-        "p": 0.5
+        "p": 0.4
       }
     },
     {
       "name": "RandomFlip",
       "params": {
-        "axes": 0,
-        "flip_probability": 0.5
+        "axes": [0, 1, 2],
+        "flip_probability": 0.4
       }
     },
     {
-      "name": "RandomFlip",
+      "name": "RandomElasticDeformation",
       "params": {
-        "axes": 1,
-        "flip_probability": 0.5
+        "num_control_points": 7,
+        "max_displacement": 4.0,
+        "locked_borders": 2,
+        "image_interpolation": "linear",
+        "p": 0.1
       }
     },
     {
-      "name": "RandomFlip",
+      "name": "RandomBiasField",
       "params": {
-        "axes": 2,
-        "flip_probability": 0.5
+        "coefficients": 0.5,
+        "order": 3,
+        "p": 0.1
+      }
+    },
+    {
+      "name": "RandomNoise",
+      "params": {
+        "mean": 0,
+        "std": 0.01,
+        "p": 0.1
+      }
+    },
+    {
+      "name": "RandomGamma",
+      "params": {
+        "log_gamma": [-0.15, 0.15],
+        "p": 0.1
+      }
+    },
+    {
+      "name": "RandomBlur",
+      "params": {
+        "std": [0.5, 1.0],
+        "p": 0.1
       }
     }
   ]
+
 }

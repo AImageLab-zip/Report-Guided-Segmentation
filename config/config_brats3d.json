@@ -1,19 +1,18 @@
 {
-    "name": "BraTS3D_training",
-    "n_gpu": 1,
+    "name": "BraTS3D_depth4_SGD",
+    "n_gpu": 4,
 
     "dataset": {
         "name": "BraTS3D",
-        "path": "/work/grana_neuro/BRATS2023_Training_nifti",
+        "path": "/leonardo_work/IscrC_narc2/reports_project/BRATS2023_Training_nifti",
         "patch_size": 128,
-
+    
         "grid_overlap": 0,
         "queue_length": 100,
         "samples_per_volume": 2,
-        "batch_size": 1,
-        "split_file": "/work/grana_neuro/Brain-Segmentation/split_files/BraTS23.json",
-        "val_ratio": 0.2,
-        "transforms": "/work/grana_neuro/Brain-Segmentation/config/brats3d_transforms.json"
+        "batch_size": 16,
+        "split_file": "/leonardo/home/userexternal/kmarches/Report-Guided-Segmentation/split_files/BraTS23_reports.json",
+        "transforms": "/leonardo/home/userexternal/kmarches/Report-Guided-Segmentation/config/brats3d_transforms.json"
     },
     "classes": {
         "0": "Background",
@@ -47,7 +46,7 @@
     },
     "scheduler": {
         "name": "PolynomialLR",
-        "total_iters": 65700,
+        "total_iters": 22000,
         "power": 0.9
     },
     "metrics": [

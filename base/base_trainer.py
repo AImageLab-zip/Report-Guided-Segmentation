@@ -43,6 +43,11 @@ class BaseTrainer:
         self.save_visualizations = save_visualizations
 
         self.model = ModelFactory.create_instance(self.config).to(self.device)
+        
+        # Wrap model with DataParallel if n_gpu > 1
+        if self.config.n_gpu > 1 and torch.cuda.device_count() > 1:
+            print(f"Using DataParallel with {torch.cuda.device_count()} GPUs")
+            self.model = torch.nn.DataParallel(self.model)
 
         self.optimizer, self.lr_scheduler = OptimizerFactory.create_instance(self.model, self.config)
 
@@ -195,11 +200,13 @@ class BaseTrainer:
         :param epoch: current epoch number
         :param save_best: if True, save the checkpoint also to 'model_best.pth'
         """
-        # TODO: Se può essere utile altro aggiungere qua
+        # Handle DataParallel wrapper when saving
+        model_to_save = self.model.module if isinstance(self.model, torch.nn.DataParallel) else self.model
+        
         state = {
-            'name': type(self.model).__name__,
+            'name': type(model_to_save).__name__,
             'config': self.config,
-            'model': self.model.state_dict(),
+            'model': model_to_save.state_dict(),
             'optimizer': self.optimizer.state_dict(),
             'lr_scheduler': self.lr_scheduler.state_dict() if self.lr_scheduler is not None else None,
             'epoch': epoch,
@@ -225,7 +232,8 @@ class BaseTrainer:
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
 
         # Load model state
-        self.model.load_state_dict(checkpoint['model'])
+        model_to_load = self.model.module if isinstance(self.model, torch.nn.DataParallel) else self.model
+        model_to_load.load_state_dict(checkpoint['model'])
         print("Model weights loaded.")
 
         # Load optimizer state

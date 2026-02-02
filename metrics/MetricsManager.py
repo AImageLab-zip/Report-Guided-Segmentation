@@ -160,6 +160,10 @@ class MetricsManager:
                         val = value.item()
                 else:
                     val = float(value) if not isinstance(value, (int, float)) else value
+
+                # Skip NaNs (e.g., empty region with ignore_empty=True)
+                if isinstance(val, float) and np.isnan(val):
+                    continue
                 
                 key = f'{metric_name}_{region_name}'
                 self.metric_sums[key] = self.metric_sums.get(key, 0.0) + val
