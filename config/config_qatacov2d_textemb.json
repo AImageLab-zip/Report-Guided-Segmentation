@@ -20,24 +20,35 @@
         "in_channels": 1,
         "num_classes": 2,
         "size": 32,
-        "depth": 5
+        "depth": 5,
+        "emb_dim": 1024
     },
     "loss": {
-        "name": "DiceCELoss",
-        "softmax": true,
-        "include_background": true
+        "name": "CombinedSegSigLoss",
+
+        "seg_loss_name": "DiceCELoss",
+        "seg_loss_kwargs": {
+            "softmax": true,
+            "include_background": true
+        },
+
+        "lambda_sig": 0.1,
+
+        "sigloss_kwargs": {
+            "temperature_init": 0.07,
+            "learnable_temperature": true,
+            "learnable_bias": true
+        }
     },
+
     "optimizer": {
-        "name": "SGD",
-        "lr": 0.01,
-        "momentum": 0.99,
-        "weight_decay": 0.00003,
-        "nesterov": true
+        "name": "AdamW",
+        "lr": 0.0003
     },
     "scheduler": {
-        "name": "PolynomialLR",
-        "total_iters": 22329,
-        "power": 0.9
+        "name": "StepLR",
+        "step_size": 10,
+        "gamma": 0.9
     },
     "metrics": [
         {

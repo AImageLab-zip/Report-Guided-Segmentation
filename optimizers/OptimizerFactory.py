@@ -2,33 +2,28 @@ import torch
 
 class OptimizerFactory:
     @staticmethod
-    def create_instance(model, config):
-        optimizer_name = config.optimizer['name']
-        optimizer_kwargs = config.optimizer
-        del optimizer_kwargs['name']
+    def create_instance(model, config, extra_params=None):
+        extra_params = [] if extra_params is None else list(extra_params)
+
+        optimizer_kwargs = dict(config.optimizer)
+        optimizer_name = optimizer_kwargs.pop("name")
 
         if optimizer_name not in torch.optim.__dict__:
             raise Exception(f"Could not find optimizer: {optimizer_name}")
         optimizer_class = getattr(torch.optim, optimizer_name)
 
-        try:
-            optimizer = optimizer_class(model.parameters(), **optimizer_kwargs)
-        except TypeError as e:
-            raise TypeError(f"Could not instantiate {optimizer_name} with {optimizer_kwargs}\n{e}")
+        params = list(model.parameters()) + extra_params
+        optimizer = optimizer_class(params, **optimizer_kwargs)
 
         if hasattr(config, 'scheduler'):
-            scheduler_name = config.scheduler['name']
-            scheduler_kwargs = config.scheduler
-            del scheduler_kwargs['name']
+            scheduler_kwargs = dict(config.scheduler)
+            scheduler_name = scheduler_kwargs.pop("name")
 
             if scheduler_name not in torch.optim.lr_scheduler.__dict__:
-                raise Exception(f"Could not find optimizer: {scheduler_name}")
+                raise Exception(f"Could not find scheduler: {scheduler_name}")
             scheduler_class = getattr(torch.optim.lr_scheduler, scheduler_name)
 
-            try:
-                scheduler = scheduler_class(optimizer, **scheduler_kwargs)
-            except TypeError as e:
-                raise TypeError(f"Could not instantiate {scheduler_name} with {scheduler_kwargs}\n{e}")
+            scheduler = scheduler_class(optimizer, **scheduler_kwargs)
         else:
             scheduler = None
 

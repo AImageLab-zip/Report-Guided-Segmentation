@@ -64,12 +64,13 @@ class UpConvBlock(nn.Module):
 
 
 class UNet2D(BaseModel):
-    def __init__(self, in_channels, num_classes, size=32, depth=3):
+    def __init__(self, in_channels, num_classes, size=32, depth=3, emb_dim=1024):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = num_classes
         self.size = size
         self.depth = depth
+        self.emb_dim = emb_dim
 
         self.encoder = nn.ModuleDict()
         self.encoder['0'] = DownConvBlock([self.in_channels, self.size], [self.size, self.size*2])
@@ -88,9 +89,14 @@ class UNet2D(BaseModel):
                                         [self.size*2, self.size*2],
                                         up_conv=False)
         self.out_layer = nn.Conv2d(self.size * 2, self.out_channels, kernel_size=1, stride=1, padding=0)
+        
+        #image encoding
+        bottleneck_out_ch = self.size * (2 ** (self.depth + 1))
+        self.img_proj_1x1 = nn.Conv2d(bottleneck_out_ch, self.emb_dim, kernel_size=1, stride=1, padding=0)
+        self.img_pool = nn.AdaptiveAvgPool2d((1, 1))
 
 
-    def forward(self, x):
+    def forward(self, x, return_embedding: bool = False):
         #print(self.encoder)
         #print(self.bottleneck)
         #print(self.decoder)
@@ -111,6 +117,13 @@ class UNet2D(BaseModel):
             feat_list.append(feat)
 
         out = self.bottleneck(out)
+        
+        # --- image embedding extraction ---
+        img_emb = None
+        if return_embedding:
+            z_map = self.img_proj_1x1(out)          # [B, 1024, Hb, Wb]
+            z = self.img_pool(z_map).squeeze(-1).squeeze(-1)  # [B, 1024]
+            img_emb = z
 
         for block in self.decoder:
             out = self.decoder[block](torch.cat((out, feat_list[int(block)]), dim=1))
@@ -121,6 +134,8 @@ class UNet2D(BaseModel):
         if pre_padding:
             out = unpad_2d(out, pads)
 
+        if return_embedding:
+            return out, img_emb
         return out
 
 ''' Example usage

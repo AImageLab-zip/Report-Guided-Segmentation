@@ -11,6 +11,7 @@ from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 
 from base.base_dataset import BaseDataset
+from datasets.QaTaCov import QaTaCov2DSet
 
 
 class QaTaCovTextEmb(BaseDataset):
@@ -48,21 +49,17 @@ class QaTaCovTextEmb(BaseDataset):
             train_transforms,
         )
         if self.validation:
-            self.val_set = QaTaCov2DTextEmbSet(
+            self.val_set = QaTaCov2DSet(
                 self.val_images,
                 self.val_labels,
-                metadata.get("val", {}),
-                reports_emb,
-                image_to_idx,
-                test_transforms,
+                metadata.get('val', {}),
+                test_transforms
             )
-        self.test_set = QaTaCov2DTextEmbSet(
+        self.test_set = QaTaCov2DSet(
             self.test_images,
             self.test_labels,
-            metadata.get("test", {}),
-            reports_emb,
-            image_to_idx,
-            test_transforms,
+            metadata.get('test', {}),
+            test_transforms
         )
 
     def _get_text_emb_dir(self) -> str:
