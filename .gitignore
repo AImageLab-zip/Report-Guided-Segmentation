@@ -123,6 +123,7 @@ logs/
 QaTaCov19-v2/
 config/config_qatacov_preprocess.json
 datasets/test_qatacov.py
+scripts/create_qatacov_split_variants.py
 
 # editor, os cache directory
 .vscode/
