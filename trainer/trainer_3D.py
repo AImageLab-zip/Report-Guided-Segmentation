@@ -4,6 +4,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 import numpy as np
 import torch
+from torch.cuda.amp import autocast
 from torchvision.utils import make_grid
 from base.base_trainer import BaseTrainer
 from tqdm import tqdm
@@ -29,16 +30,23 @@ class Trainer_3D(BaseTrainer):
             image = sample['image'][tio.DATA].float().to(self.device)
             label = _onehot_enc(sample['label'][tio.DATA].long(), self.num_classes).float().to(self.device)
 
-            prediction = self.model(image)
-
-            loss = self.loss(prediction, label)
+            with autocast(enabled=self.use_amp, dtype=self.amp_dtype):
+                prediction = self.model(image)
+                loss = self.loss(prediction, label)
             if self.debug:
                 print(f"E: {epoch}\tI: {idx}\tL: {loss.item()}")
 
-            self.optimizer.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.)
-            self.optimizer.step()
+            self.optimizer.zero_grad(set_to_none=True)
+            if self.use_scaler:
+                self.scaler.scale(loss).backward()
+                self.scaler.unscale_(self.optimizer)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 5.) # better 5 with SGD, 1 with Adam
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+            else:
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 5.) # better 5 with SGD, 1 with Adam
+                self.optimizer.step()
 
             self.train_metrics.update_metrics(prediction, label)
 
@@ -108,7 +116,6 @@ class Trainer_3D(BaseTrainer):
             patch_size = tuple(patch_size_value)
         image_shape = sample.spatial_shape
 
-        # Ensure patch size is not larger than image size by padding if needed
         if any(p > s for p, s in zip(patch_size, image_shape)):
             sample = tio.CropOrPad(patch_size)(sample)
 

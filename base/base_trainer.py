@@ -1,4 +1,5 @@
 import torch
+from torch.cuda.amp import GradScaler
 from abc import abstractmethod
 from numpy import inf
 
@@ -29,7 +30,7 @@ class BaseTrainer:
     """
     # Mandatory parameters not specified in the config file, must be passed as CL params when calling the main.py
     # If too many params it is possible to specify them in another file
-    def __init__(self, config, epochs, validation, val_every, save_path, resume=False, debug=False, eval_metric_type='mean', use_wandb=False, save_visualizations = False, **kwargs):
+    def __init__(self, config, epochs, validation, val_every, save_path, resume=False, debug=False, eval_metric_type='mean', use_wandb=False, save_visualizations = False, mixed_precision=None, **kwargs):
         """
         Initialize the Trainer with model, optimizer, scheduler, loss, metrics and weights using the config file
         """
@@ -41,6 +42,12 @@ class BaseTrainer:
         self.use_wandb = use_wandb
         self.wandb_run_id = None
         self.save_visualizations = save_visualizations
+        # Mixed precision setup
+        self.mixed_precision = mixed_precision
+        self.use_amp = self.device.type == 'cuda' and self.mixed_precision in ['fp16', 'bf16']
+        self.amp_dtype = torch.float16 if self.mixed_precision == 'fp16' else torch.bfloat16
+        self.use_scaler = self.device.type == 'cuda' and self.mixed_precision == 'fp16'
+        self.scaler = GradScaler(enabled=self.use_scaler)
 
         self.model = ModelFactory.create_instance(self.config).to(self.device)
         

@@ -78,6 +78,13 @@ def parse_args():
         action='store_true',
         help='Enable saving of visualizations during validation'
     )
+    parser.add_argument(
+        '--mixed_precision',
+        type=str,
+        default=None,
+        choices=['fp16', 'bf16'],
+        help='Enable mixed precision: fp16 or bf16 (default: disabled)'
+    )
     return parser.parse_args()
 
 
@@ -110,7 +117,8 @@ def main():
         eval_metric_type=args.eval_metric_type,
         save_visualizations = args.save_visualizations,
         use_wandb=args.wandb,
-        val_every=args.val_every
+        val_every=args.val_every,
+        mixed_precision=args.mixed_precision
     )
     try:
         trainer_instance.train()
