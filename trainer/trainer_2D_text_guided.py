@@ -55,7 +55,7 @@ class Trainer_2D_TextGuided(BaseTrainerText):
                 z_img, z_txt = self.guidance_head(bottleneck, text_emb)
 
                 # --- combined segsig loss ---
-                loss = self.loss(pred, label, img_emb=z_img, txt_emb=z_txt)
+                loss = self.loss(pred, label, img_emb=z_img, txt_emb=z_txt,t_prime = self.model.t_prime,bias = model.bias)
 
             else:
                 pred = self.model(image)
