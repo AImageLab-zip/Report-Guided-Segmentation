@@ -234,5 +234,6 @@ class QaTaCov2DTextEmbSet(Dataset):
         if emb_idx is None:
             raise KeyError(f"No text embedding index found for image stem: {image_stem}")
         sample["text_emb"] = torch.from_numpy(self.reports_emb[emb_idx]).float()
+        sample["report_idx"] = torch.tensor(int(emb_idx), dtype=torch.long)
 
         return sample
