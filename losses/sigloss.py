@@ -19,8 +19,10 @@ class SigLoss(nn.Module):
         bias_init: float = -10.0,             
         learnable_temperature: bool = True,
         learnable_bias: bool = True,
+        mask_type: str = 'ignore_duplicates',  # 'pos_only', 'ignore_duplicates', 'all'
     ):
         super().__init__()
+        self.mask_type = mask_type
 
         init_t = float(torch.log(torch.tensor(1.0 / temperature_init))) #log(10)
 
@@ -34,7 +36,12 @@ class SigLoss(nn.Module):
         else:
             self.register_buffer("bias", torch.tensor(bias_init))
 
-    def forward(self, img_emb: torch.Tensor, txt_emb: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        img_emb: torch.Tensor,
+        txt_emb: torch.Tensor,
+        report_idx: torch.Tensor = None,
+    ) -> torch.Tensor:
         assert img_emb.dim() == 2 and txt_emb.dim() == 2, "Expected [B,D] embeddings"
         assert img_emb.shape == txt_emb.shape, f"Shape mismatch: {img_emb.shape} vs {txt_emb.shape}"
 
@@ -57,17 +64,37 @@ class SigLoss(nn.Module):
         B = img.shape[0]
         labels = 2 * torch.eye(B, device=logits.device, dtype=logits.dtype) - 1  # +1 diag, -1 off
 
-
-        # version 1
         loss = -F.logsigmoid(labels * logits)
-        masked_loss = (torch.eye(B, device=logits.device, dtype=logits.dtype) * loss).sum() / B #keep only positives
 
+        # use flag for mask_type
+        if self.mask_type == 'pos_only':
+            # keep only positives
+            masked_loss = (torch.eye(B, device=logits.device, dtype=logits.dtype) * loss).sum() / B
+        elif self.mask_type == 'ignore_duplicates':
+            # ignore duplicates in batch (same report for multiple images)
+            if report_idx is None:
+                raise ValueError(
+                    "SigLoss(mask_type='ignore_duplicates') requires report_idx in forward()."
+                )
 
-        #version 2
-        # loss = -F.logsigmoid(labels * logits)
-        # mask = (report_idx[:, None] != report_idx[None, :]).float()
-        # mask += torch.eye(B, device=logits.device, dtype=logits.dtype)  # keep positives
-        # masked_loss = (mask * loss).sum() / mask.sum().clamp(min=1.0)
+            if not torch.is_tensor(report_idx):
+                report_idx = torch.as_tensor(report_idx, device=logits.device)
+            else:
+                report_idx = report_idx.to(logits.device)
+
+            if report_idx.dim() > 1:
+                report_idx = report_idx.view(-1)
+
+            if report_idx.numel() != B:
+                raise ValueError(
+                    f"report_idx must have B={B} elements, got shape {tuple(report_idx.shape)}"
+                )
+
+            mask = (report_idx[:, None] != report_idx[None, :]).to(logits.dtype)
+            mask += torch.eye(B, device=logits.device, dtype=logits.dtype)  # keep positives
+            masked_loss = (mask * loss).sum() / mask.sum().clamp(min=1.0)
+        else:
+            masked_loss = loss.sum() / (B * B)
 
 
 

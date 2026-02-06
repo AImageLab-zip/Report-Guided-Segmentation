@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import torch
+from itertools import chain
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PROJECT_ROOT not in sys.path:
@@ -81,9 +82,10 @@ def main() -> None:
     )
 
     train_loader = qatacov.get_loader("train")
+    val_loader = qatacov.get_loader("val")
 
     precompute_unique_report_embeddings(
-        dataloader=train_loader,
+        dataloader=chain(train_loader, val_loader),
         save_directory=args.save_directory,
         device="cuda" if torch.cuda.is_available() else "cpu",
         max_length=args.max_len,

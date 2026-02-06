@@ -50,12 +50,22 @@ class Trainer_2D_TextGuided(BaseTrainerText):
                 if text_emb.dim() == 1:
                     text_emb = text_emb.unsqueeze(0)
 
+                report_idx = sample.get("report_idx", None)
+                if report_idx is not None:
+                    report_idx = report_idx.to(self.device)
+
                 # --- project both modalities into shared space ---
                 # z_img: [B,d], z_txt: [B,d]
                 z_img, z_txt = self.guidance_head(bottleneck, text_emb)
 
                 # --- combined segsig loss ---
-                loss = self.loss(pred, label, img_emb=z_img, txt_emb=z_txt)
+                loss = self.loss(
+                    pred,
+                    label,
+                    img_emb=z_img,
+                    txt_emb=z_txt,
+                    report_idx=report_idx,
+                )
 
             else:
                 pred = self.model(image)

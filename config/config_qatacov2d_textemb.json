@@ -1,16 +1,17 @@
 {
-    "name": "QaTaCOV_textfulltrain_64-3_AdamW_l0.1-S1-V1",
+    "name": "QaTaCOV_textft_64-5_AdamW_l0.1-S3-V2",
     "n_gpu": 1,
 
     "dataset": {
         "name": "QaTaCovTextEmb",
         "path": "/leonardo_work/IscrC_narc2/reports_project/QaTa-COV19/QaTa-COV19-v2_preprocessed_gt",
-        "split_file": "/leonardo_work/IscrC_narc2/reports_project/QaTa-COV19/QaTa-COV19-v2_preprocessed_gt/qatacov_split.xlsx",
-        "text_emb_dir": "/leonardo_work/IscrC_narc2/reports_project/QaTa-COV19/Text_Embeddings/BioBERT",
+        "split_file": "/leonardo_work/IscrC_narc2/reports_project/QaTa-COV19/QaTa-COV19-v2_preprocessed_gt/qatacov_split3.xlsx",
+        "text_emb_dir": "/leonardo_work/IscrC_narc2/reports_project/QaTa-COV19/Text_Embeddings/BioBERT/CLS",
         "batch_size": 64,
         "image_size": [224, 224],
         "transforms": "config/qatacov2d_transforms.json"
     },
+    "pretrained_unet_path": "/leonardo_work/IscrC_narc2/reports_project/trained_models/QaTaCov2D/baseline_64-3_AdamW_S3/model_best.pth",
     "classes": {
         "0": "Background",
         "1": "Covid"
@@ -20,7 +21,7 @@
         "in_channels": 1,
         "num_classes": 2,
         "size": 32,
-        "depth": 3
+        "depth": 5
     },
     "loss": {
         "name": "CombinedSegSigLoss",
@@ -35,7 +36,8 @@
 
         "sigloss_kwargs": {
             "learnable_temperature": true,
-            "learnable_bias": true
+            "learnable_bias": true,
+            "mask_type": "ignore_duplicates"
         }
     },
 
