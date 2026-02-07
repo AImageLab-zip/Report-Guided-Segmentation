@@ -38,7 +38,7 @@ class CombinedSegSigLoss(nn.Module):
             self.sig_loss = SigLoss(**sigloss_kwargs)
         self.lambda_sig = float(lambda_sig)
 
-    def forward(self, prediction: torch.Tensor, target: torch.Tensor, img_emb=None, txt_emb=None,t_prime,bias):
+    def forward(self, prediction: torch.Tensor, target: torch.Tensor, img_emb=None, txt_emb=None,t_prime=None,bias=None):
         seg = self.seg_loss(prediction, target)
 
         # If embeddings are missing, behave like baseline loss

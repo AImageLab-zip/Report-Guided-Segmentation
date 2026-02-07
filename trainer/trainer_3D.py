@@ -11,7 +11,7 @@ import torchio as tio
 from collections import defaultdict
 import os
 from utils.util import _onehot_enc
-
+import torch.distributed as dist
 class Trainer_3D(BaseTrainer):
     """
     Trainer class which implements a Basetrainer
@@ -24,15 +24,16 @@ class Trainer_3D(BaseTrainer):
         :return: A log that contains average loss and metric in this epoch.
         """
         self.model.train()
-
-        for idx, sample in tqdm(enumerate(self.train_loader), desc=f'Epoch {epoch}', total=len(self.train_loader)):
+        self.train_sampler.set_epoch(epoch)
+        iterator = tqdm(enumerate(self.train_loader), desc=f'Epoch {epoch}', total=len(self.train_loader)) if dist.get_rank()==0 else enumerate(self.train_loader)
+        for idx, sample in iterator:
             image = sample['image'][tio.DATA].float().to(self.device)
             label = _onehot_enc(sample['label'][tio.DATA].long(), self.num_classes).float().to(self.device)
 
             prediction = self.model(image)
 
             loss = self.loss(prediction, label)
-            if self.debug:
+            if self.debug and dist.get_rank()==0:
                 print(f"E: {epoch}\tI: {idx}\tL: {loss.item()}")
 
             self.optimizer.zero_grad()
@@ -44,16 +45,16 @@ class Trainer_3D(BaseTrainer):
 
         # After all iterations in the epoch, compute and store the epoch metrics
         self.train_metrics.compute_epoch_metrics(epoch)
-   
+
         self.train_metrics.save_to_csv(self.save_path)
         results = self._results_dict('train', epoch)
 
-        if self.debug:
+        if self.debug and dist.get_rank()==0:
             print(results)
 
         if self.lr_scheduler is not None:
             self.lr_scheduler.step()
-
+        dist.barrier()
         return results
 
     @torch.inference_mode() #Context manager analogous to no_grad
@@ -69,7 +70,8 @@ class Trainer_3D(BaseTrainer):
         self.model.eval()
         loader = getattr(self, f'{phase}_loader')
         metrics_manager = getattr(self, f'{phase}_metrics')
-        for idx, sample in tqdm(enumerate(loader), desc=f'{phase}, epoch {epoch}', total=len(loader)):
+        iterator = tqdm(enumerate(loader), desc=f'{phase}, epoch {epoch}', total=len(loader)) if dist.get_rank() == 0 else enumerate(loader)
+        for idx, sample in iterator:
             # Convert batch dictionary back to Subject (batch_size=1)
             subject = tio.Subject(
                 image=tio.ScalarImage(tensor=sample['image']['data'][0]),
@@ -96,7 +98,7 @@ class Trainer_3D(BaseTrainer):
         metrics_manager.save_to_csv(self.save_path)
 
         results = self._results_dict(phase, epoch)
-
+        dist.barrier()
         return results
 
     def _inference_sampler(self, sample: tio.Subject):
@@ -124,13 +126,12 @@ class Trainer_3D(BaseTrainer):
         label_aggregator = tio.inference.GridAggregator(grid_sampler, overlap_mode="hann")
 
         num_workers = int(os.environ.get('SLURM_CPUS_PER_TASK', 1))
-
         loader = tio.SubjectsLoader(
             grid_sampler,
             #num_workers=num_workers,
             num_workers=0, #to not have the warning 
             batch_size=1,
-            pin_memory=False, #true
+            pin_memory=True, #true
         )
 
         return loader, pred_aggregator, label_aggregator

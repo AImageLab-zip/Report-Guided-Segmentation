@@ -1,6 +1,8 @@
 import torch
 from abc import abstractmethod
 from numpy import inf
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 import os
 import yaml
@@ -35,20 +37,45 @@ class BaseTrainer:
         """
         self.config = config
         self.debug = debug
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.validation = validation
         self.eval_metric_type = eval_metric_type
         self.use_wandb = use_wandb
         self.wandb_run_id = None
         self.save_visualizations = save_visualizations
 
-        self.model = ModelFactory.create_instance(self.config).to(self.device)
+        self.model = ModelFactory.create_instance(self.config)
         
-        # Wrap model with DataParallel if n_gpu > 1
-        if self.config.n_gpu > 1 and torch.cuda.device_count() > 1:
-            print(f"Using DataParallel with {torch.cuda.device_count()} GPUs")
-            self.model = torch.nn.DataParallel(self.model)
+        # Check if it was launched with torchrun
+        vars = {"RANK", "LOCAL_RANK", "WORLD_SIZE"}
+        if not vars.issubset(os.environ):
+            error_message = '''
+                This code uses PyTorch DistributedDataParallel (DDP).
+                Please launch the script using torchrun.
 
+                Single-GPU (DDP enabled):
+                torchrun --nproc_per_node=1 main.py [your arguments]
+
+                Multi-GPU (single node):
+                torchrun --nproc_per_node=NUM_GPUS main.py [your arguments]
+            '''
+            raise RuntimeError(error_message)
+        
+        # Process group init
+        dist.init_process_group(backend="nccl", init_method="env://")
+
+        # Check if multinode (not allowed)
+        tot_gpus = dist.get_world_size()
+        local_gpus = torch.cuda.device_count()
+        if tot_gpus > local_gpus:
+            raise RuntimeError('This script doesn\'t currently support multi node training.')
+        
+        # Getting the device:
+        self.device =  torch.device(f"cuda:{dist.get_rank()}")
+
+        # Wrap model with DataParallel if n_gpu > 1
+        self.model = DDP(self.model.to(self.device),find_unused_parameters=True)
+    
+        
         self.optimizer, self.lr_scheduler = OptimizerFactory.create_instance(self.model, self.config)
 
         self.loss_name, self.loss = LossFactory.create_instance(self.config)
@@ -132,7 +159,7 @@ class BaseTrainer:
         :param split_ratio: current epoch number
         """
         self.dataset = DatasetFactory.create_instance(self.config, self.validation, self.train_transforms, self.test_transforms)
-        self.train_loader = self.dataset.get_loader('train')
+        self.train_loader,self.train_sampler = self.dataset.get_loader('train')
         self.test_loader = self.dataset.get_loader('test')
         if self.validation:
             self.val_loader = self.dataset.get_loader('val')
@@ -147,35 +174,37 @@ class BaseTrainer:
         """
         if not self.use_wandb:
             return
-
-        wandb_project = os.environ.get('WANDB_PROJECT', 'medical-segmentation')
-        wandb_entity = os.environ.get('WANDB_ENTITY', None)
-        config_dict = {k: v for k, v in self.config.__dict__.items() if not k.startswith('_')}
-        
-        if resume_id:
-            # Resume existing run
-            # Note: When resuming, the project name must match the original run's project
-            # W&B will validate this automatically and raise an error if there's a mismatch
-            wandb.init(
-                entity=wandb_entity,
-                project=wandb_project,
-                name=self.config.name,
-                id=resume_id,
-                resume="must",
-                config=config_dict
-            )
-            print(f"Resumed W&B run: {self.config.name} (ID: {resume_id})")
-            print(f"Entity: {wandb_entity}, Project: {wandb_project}")
-        else:
-            wandb.init(
-                entity=wandb_entity,
-                project=wandb_project,
-                name=self.config.name,
-                config=config_dict
-            )
-            self.wandb_run_id = wandb.run.id
-            print(f"Started W&B run: {self.config.name} (ID: {self.wandb_run_id})")
-            print(f"Entity: {wandb_entity}, Project: {wandb_project}")
+        if dist.get_rank() == 0:
+            wandb_project = os.environ.get('WANDB_PROJECT', 'medical-segmentation')
+            wandb_entity = os.environ.get('WANDB_ENTITY', None)
+            config_dict = {k: v for k, v in self.config.__dict__.items() if not k.startswith('_')}
+            
+            if resume_id:
+                # Resume existing run
+                # Note: When resuming, the project name must match the original run's project
+                # W&B will validate this automatically and raise an error if there's a mismatch
+                wandb.init(
+                    entity=wandb_entity,
+                    project=wandb_project,
+                    name=self.config.name,
+                    id=resume_id,
+                    resume="must",
+                    config=config_dict,
+                    mode = 'offline'
+                )
+                print(f"Resumed W&B run: {self.config.name} (ID: {resume_id})")
+                print(f"Entity: {wandb_entity}, Project: {wandb_project}")
+            else:
+                wandb.init(
+                    entity=wandb_entity,
+                    project=wandb_project,
+                    name=self.config.name,
+                    config=config_dict,
+                    mode = 'offline'
+                )
+                self.wandb_run_id = wandb.run.id
+                print(f"Started W&B run: {self.config.name} (ID: {self.wandb_run_id})")
+                print(f"Entity: {wandb_entity}, Project: {wandb_project}")
 
     @abstractmethod
     def _train_epoch(self, epoch):
@@ -200,27 +229,28 @@ class BaseTrainer:
         :param epoch: current epoch number
         :param save_best: if True, save the checkpoint also to 'model_best.pth'
         """
-        # Handle DataParallel wrapper when saving
-        model_to_save = self.model.module if isinstance(self.model, torch.nn.DataParallel) else self.model
-        
-        state = {
-            'name': type(model_to_save).__name__,
-            'config': self.config,
-            'model': model_to_save.state_dict(),
-            'optimizer': self.optimizer.state_dict(),
-            'lr_scheduler': self.lr_scheduler.state_dict() if self.lr_scheduler is not None else None,
-            'epoch': epoch,
-            'best_metric': self.best_metric,
-            'wandb_run_id': self.wandb_run_id if self.use_wandb else None,
-        }
+        if dist.get_rank() == 0:
+            # Handle DDP wrapper when saving
+            model_to_save = self.model.module if isinstance(self.model, DDP) else self.model
 
-        checkpoint_path = os.path.join(self.save_path, 'model_last.pth')
-        torch.save(state, checkpoint_path)
+            state = {
+                'name': type(model_to_save).__name__,
+                'config': self.config,
+                'model': model_to_save.state_dict(),
+                'optimizer': self.optimizer.state_dict(),
+                'lr_scheduler': self.lr_scheduler.state_dict() if self.lr_scheduler is not None else None,
+                'epoch': epoch,
+                'best_metric': self.best_metric,
+                'wandb_run_id': self.wandb_run_id if self.use_wandb else None,
+            }
 
-        if save_best:
-            checkpoint_path = os.path.join(self.save_path, 'model_best.pth')
-            print(f'Saving checkpoints {checkpoint_path}')
+            checkpoint_path = os.path.join(self.save_path, 'model_last.pth')
             torch.save(state, checkpoint_path)
+
+            if save_best:
+                checkpoint_path = os.path.join(self.save_path, 'model_best.pth')
+                print(f'Saving checkpoints {checkpoint_path}')
+                torch.save(state, checkpoint_path)
 
     def _resume_checkpoint(self):
         """
@@ -232,7 +262,7 @@ class BaseTrainer:
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
 
         # Load model state
-        model_to_load = self.model.module if isinstance(self.model, torch.nn.DataParallel) else self.model
+        model_to_load = self.model.module if isinstance(self.model, DDP) else self.model
         model_to_load.load_state_dict(checkpoint['model'])
         print("Model weights loaded.")
 
