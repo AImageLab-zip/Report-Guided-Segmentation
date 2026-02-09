@@ -12,13 +12,23 @@ class SigLoss(nn.Module):
       txt_emb: [B, D]
     Returns:
       scalar loss
+
+    Usage:
+    criterion = SigLoss(mode = SigLoss.STANDARD)
+    ...
+    loss = criterion(img_emb, txt_emg)
     """
+    STANDARD = 0        # Default SigLipLoss implementation
+    ONLY_POSITIVES = 1  # Only positive terms contribute
+    CONTINUOUS = 2      # Continuous weights in range [-1; +1] instead of hard -1 +1
+
     def __init__(
         self,
         temperature_init: float = 0.1,      
         bias_init: float = -10.0,             
         learnable_temperature: bool = True,
         learnable_bias: bool = True,
+        mode = None
     ):
         super().__init__()
 
@@ -34,6 +44,7 @@ class SigLoss(nn.Module):
         else:
             self.register_buffer("bias", torch.tensor(bias_init))
 
+        assert mode is not None, 'Please, pass an explicit mode param.'
     def forward(self, img_emb: torch.Tensor, txt_emb: torch.Tensor) -> torch.Tensor:
         assert img_emb.dim() == 2 and txt_emb.dim() == 2, "Expected [B,D] embeddings"
         assert img_emb.shape == txt_emb.shape, f"Shape mismatch: {img_emb.shape} vs {txt_emb.shape}"
@@ -55,12 +66,22 @@ class SigLoss(nn.Module):
 
         # labels: 2 * eye(B) - ones(B)
         B = img.shape[0]
-        labels = 2 * torch.eye(B, device=logits.device, dtype=logits.dtype) - 1  # +1 diag, -1 off
 
 
-        # version 1
-        loss = -F.logsigmoid(labels * logits)
-        masked_loss = (torch.eye(B, device=logits.device, dtype=logits.dtype) * loss).sum() / B #keep only positives
+        match self.mode:
+            case self.STANDARD:
+                labels = 2 * torch.eye(B, device=logits.device, dtype=logits.dtype) - 1  
+                loss = -F.logsigmoid(labels * logits).sum() / B
+            case self.ONLY_POSITIVES:
+                labels = 2 * torch.eye(B, device=logits.device, dtype=logits.dtype) - 1  
+                loss = -F.logsigmoid(labels * logits)
+                loss = (torch.eye(B, device=logits.device, dtype=logits.dtype) * loss).sum() / B 
+            case self.CONTINUOUS:
+                labels = txt @ txt.t()
+                loss = -F.logsigmoid(labels * logits).sum() / B
+            case _:
+                raise RuntimeError(f'Invalid mode:{self.mode}')
+
 
 
         #version 2
@@ -71,4 +92,4 @@ class SigLoss(nn.Module):
 
 
 
-        return masked_loss
+        return loss
