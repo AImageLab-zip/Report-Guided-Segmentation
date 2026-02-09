@@ -11,12 +11,20 @@ from tqdm import tqdm
 import torchio as tio
 from collections import defaultdict
 import os
+import itertools
 from utils.util import _onehot_enc
+from datasets.DatasetFactory import DatasetFactory
 
-class Trainer_3D(BaseTrainer):
+class Trainer_3DText(BaseTrainer):
     """
     Trainer class which implements a Basetrainer
     """
+    def __init__(self, *args, pretrained_path=None, **kwargs):
+        self.pretrained_path = pretrained_path
+        super().__init__(*args, **kwargs)
+        if self.pretrained_path:
+            self._load_pretrained_weights()
+
     def _train_epoch(self, epoch):
         """
         Training logic for an epoch
@@ -26,29 +34,53 @@ class Trainer_3D(BaseTrainer):
         """
         self.model.train()
 
-        for idx, sample in tqdm(enumerate(self.train_loader), desc=f'Epoch {epoch}', total=len(self.train_loader)):
+        def _train_step(sample, use_report=False):
             image = sample['image'][tio.DATA].float().to(self.device)
             label = _onehot_enc(sample['label'][tio.DATA].long(), self.num_classes).float().to(self.device)
 
+            report = None
+            if use_report and 'report' in sample:
+                report = sample['report'].to(self.device)
+
             with autocast(enabled=self.use_amp, dtype=self.amp_dtype):
-                prediction = self.model(image)
-                loss = self.loss(prediction, label)
-            if self.debug:
-                print(f"E: {epoch}\tI: {idx}\tL: {loss.item()}")
+                if report is not None:
+                    prediction, z_img, z_txt = self.model(image, report)
+                    #if isinstance(prediction, (tuple, list)):
+                        #prediction = prediction[0]
+                    loss = self.loss(prediction, label, z_img, z_txt)
+                else:
+                    prediction = self.model(image)
+                    loss = self.loss(prediction, label)
 
             self.optimizer.zero_grad(set_to_none=True)
             if self.use_scaler:
                 self.scaler.scale(loss).backward()
                 self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 2.) # better 2 or 5 with SGD, 1 with Adam
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 2.) # better 5 with SGD, 1 with Adam
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
             else:
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 2.) # better 2 or 5 with SGD, 1 with Adam
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 2.) # better 5 with SGD, 1 with Adam
                 self.optimizer.step()
 
             self.train_metrics.update_metrics(prediction, label)
+            return loss
+
+        report_every_k = 2
+        reports_iter = None
+        if hasattr(self, 'train_reports_loader') and self.train_reports_loader is not None:
+            if len(self.train_reports_loader) > 0:
+                reports_iter = itertools.cycle(self.train_reports_loader)
+
+        for idx, sample in tqdm(enumerate(self.train_loader), desc=f'Epoch {epoch}', total=len(self.train_loader)):
+            loss = _train_step(sample, use_report=False)
+            if self.debug:
+                print(f"E: {epoch}\tI: {idx}\tL: {loss.item()}")
+
+            if reports_iter is not None and (idx + 1) % report_every_k == 0:
+                report_sample = next(reports_iter)
+                _train_step(report_sample, use_report=True)
 
         # After all iterations in the epoch, compute and store the epoch metrics
         self.train_metrics.compute_epoch_metrics(epoch)
@@ -160,4 +192,37 @@ class Trainer_3D(BaseTrainer):
                     results[m_name].update(aggregated_data)
 
         return results
+    
+
+    def _init_dataset(self, fold=0, split_ratio = (1, 0)):
+        """
+        Override the _init_dataset method to initialize also the train dataloader with samples with text
+
+        :param fold: number of fold in case of k-fold cross-validation
+        :param split_ratio: current epoch number
+        """
+        self.dataset = DatasetFactory.create_instance(self.config, self.validation, self.train_transforms, self.test_transforms)
+        self.train_loader = self.dataset.get_loader('train')
+        self.test_loader = self.dataset.get_loader('test')
+        self.train_reports_loader = self.dataset.get_loader('train', report=True)
+        if self.validation:
+            self.val_loader = self.dataset.get_loader('val')
+        else:
+            self.val_loader = None 
+
+    def _load_pretrained_weights(self):
+        if not self.pretrained_path:
+            return
+
+        if not os.path.exists(self.pretrained_path):
+            raise FileNotFoundError(f"pretrained_unet_path not found: {self.pretrained_path}")
+
+        ckpt = torch.load(self.pretrained_path, map_location=self.device)
+        state_dict = ckpt["model"] if isinstance(ckpt, dict) and "model" in ckpt else ckpt
+        model_to_load = self.model.module if isinstance(self.model, torch.nn.DataParallel) else self.model
+        missing, unexpected = model_to_load.load_state_dict(state_dict, strict=False)
+        print(f"[Pretrain] Loaded model weights from {self.pretrained_path}")
+        print(f"[Pretrain] Missing keys: {len(missing)} | Unexpected keys: {len(unexpected)}")
+        
+
 
