@@ -105,6 +105,7 @@ Command line arguments implemented in the provided main.py file:
 - `--eval_metric_type`: Metric type for model selection - `mean` (per-class mean) or `aggregated_mean` (aggregated regions mean) (default: `mean`)
 - `--wandb`: Enable Weights & Biases logging (flag). Run name will be `config.name`. Set project and entity with environment variables: `export WANDB_ENTITY="your_entity"` and `export WANDB_PROJECT="your_project"`
 - `--mixed_precision`: Enable mixed precision training: `fp16` or `bf16` (default: None, so training is performed with FP32 precision)
+- `--seed`: random seed for reproducibility (default: 42)
 
 Example of launch of main.py, training a 3D segmentation model, resuming checkpoints,
 

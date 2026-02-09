@@ -158,6 +158,14 @@ class BaseTrainer:
         wandb_project = os.environ.get('WANDB_PROJECT', 'medical-segmentation')
         wandb_entity = os.environ.get('WANDB_ENTITY', None)
         config_dict = {k: v for k, v in self.config.__dict__.items() if not k.startswith('_')}
+
+        config_dict.update({
+            "trainer": self.__class__.__name__,
+            "eval_metric_type": self.eval_metric_type,
+            "mixed_precision": self.mixed_precision,
+            "epochs": self.epochs,
+            "save_path": self.save_path
+        })
         
         if resume_id:
             # Resume existing run
