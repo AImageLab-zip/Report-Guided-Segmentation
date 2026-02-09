@@ -89,6 +89,12 @@ def parse_args():
         help='Enable mixed precision: fp16 or bf16 (default: disabled)'
     )
     parser.add_argument(
+        '--pretrained_path',
+        type=str,
+        default=None,
+        help='Path to pretrained model weights for finetuning (default: None)'
+    )
+    parser.add_argument(
         '--seed',
         type=int,
         default=42,
@@ -135,7 +141,7 @@ def main():
         use_wandb=args.wandb,
         val_every=args.val_every,
         mixed_precision=args.mixed_precision,
-        cli_args=vars(args)
+        pretrained_path=args.pretrained_path
     )
     try:
         trainer_instance.train()
