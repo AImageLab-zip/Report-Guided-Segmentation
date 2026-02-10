@@ -3,6 +3,9 @@ Main training script, which accepts configuration file and other training parame
 """
 import argparse
 import sys
+import random
+import numpy as np
+import torch
 from pathlib import Path
 
 from config import Config
@@ -78,6 +81,25 @@ def parse_args():
         action='store_true',
         help='Enable saving of visualizations during validation'
     )
+    parser.add_argument(
+        '--mixed_precision',
+        type=str,
+        default=None,
+        choices=['fp16', 'bf16'],
+        help='Enable mixed precision: fp16 or bf16 (default: disabled)'
+    )
+    parser.add_argument(
+        '--pretrained_path',
+        type=str,
+        default=None,
+        help='Path to pretrained model weights for finetuning (default: None)'
+    )
+    parser.add_argument(
+        '--seed',
+        type=int,
+        default=42,
+        help='Global random seed for reproducibility'
+    )
     return parser.parse_args()
 
 
@@ -91,6 +113,13 @@ def main():
     
     print(f"Loading configuration from: {args.config}")
     config = Config(args.config)
+
+    # Set random seeds for reproducibility
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
     
     # Create save directory if it doesn't exist
     save_path = Path(args.save_path)
@@ -110,7 +139,9 @@ def main():
         eval_metric_type=args.eval_metric_type,
         save_visualizations = args.save_visualizations,
         use_wandb=args.wandb,
-        val_every=args.val_every
+        val_every=args.val_every,
+        mixed_precision=args.mixed_precision,
+        pretrained_path=args.pretrained_path
     )
     try:
         trainer_instance.train()
