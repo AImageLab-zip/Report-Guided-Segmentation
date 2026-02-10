@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import os
 from monai.networks.utils import one_hot
-
+import torch.distributed as dist
 class MetricsManager:
     """
     Class to manage metrics/losses computation, storage, and logging on wandb.
@@ -179,15 +179,36 @@ class MetricsManager:
 
     def compute_epoch_metrics(self, epoch):
         """
-        Compute the mean metrics for the epoch and store them in the DataFrame.
+        Compute globally-correct mean metrics for the epoch.
+        Identical results are stored on every rank.
         """
         row_data = {'epoch': epoch}
-        for key in self.metric_sums:
+
+        for key in list(self.metric_sums.keys()):
+
+            # local --> tensor
+            s = torch.tensor(self.metric_sums[key], device="cuda", dtype=torch.float64)
+            c = torch.tensor(self.metric_counts[key], device="cuda", dtype=torch.float64)
+
+            # global reduction
+            dist.all_reduce(s, op=dist.ReduceOp.SUM)
+            dist.all_reduce(c, op=dist.ReduceOp.SUM)
+
+            # overwrite local state with global values
+            self.metric_sums[key] = s.item()
+            self.metric_counts[key] = max(1.0, c.item())
+
+            # compute global mean
             mean_value = self.metric_sums[key] / self.metric_counts[key]
             row_data[key] = mean_value
-        # Append the row for the current epoch
-        self.data = pd.concat([self.data, pd.DataFrame([row_data])], ignore_index=True)
-        # Reset accumulators for the next epoch
+
+        # identical row appended on all ranks
+        self.data = pd.concat(
+            [self.data, pd.DataFrame([row_data])],
+            ignore_index=True
+        )
+
+        # reset for next epoch
         self.flush()
 
     def get_metric_at_epoch(self, metric_name, epoch):
@@ -210,24 +231,26 @@ class MetricsManager:
         """
         Log the metrics to Weights & Biases for the current phase.
         """
-        if not self.data.empty:
-            # Get the most recent row (current epoch)
-            row = self.data.iloc[-1]
-            log_dict = {}
-            if epoch:
-                log_dict[f"{self.phase}/epoch"] = epoch
-            for col in self.data.columns:
-                log_dict[f"{self.phase}/{col}"] = row[col]
-            
-            wandb.log(log_dict)
-        else:
-            print("No data to log.")
+        if dist.get_rank() == 0:
+            if not self.data.empty:
+                # Get the most recent row (current epoch)
+                row = self.data.iloc[-1]
+                log_dict = {}
+                if epoch:
+                    log_dict[f"{self.phase}/epoch"] = epoch
+                for col in self.data.columns:
+                    log_dict[f"{self.phase}/{col}"] = row[col]
+                
+                wandb.log(log_dict)
+            else:
+                print("No data to log.")
 
     def save_to_csv(self, file_path):
         """
         Save the metrics DataFrame to a CSV file.
         """
-        self.data.to_csv(os.path.join(file_path, f'{self.phase}_metrics.csv'), index=False)
+        if dist.get_rank()==0:
+            self.data.to_csv(os.path.join(file_path, f'{self.phase}_metrics.csv'), index=False)
 
     def load_from_csv(self, file_path):
         """

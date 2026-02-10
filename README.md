@@ -68,7 +68,7 @@ Brain-Segmentation/
 ```
 
 ## Installation
-
+This project was run and tested on python 3.11, cuda 
 1. Clone the repository:
 ```bash
 git clone https://github.com/kev98/Medical-Image-Segmentation.git
@@ -77,7 +77,7 @@ cd Medical-Image-Segmentation
 
 2. Create and activate a virtual environment:
 ```bash
-python -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
 ```
 

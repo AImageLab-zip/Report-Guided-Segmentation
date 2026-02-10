@@ -15,7 +15,7 @@ class BaseDataset2DSliced:
 
     if 'SLURM_CPUS_PER_TASK' in os.environ:
         NUM_WORKERS = int(os.environ['SLURM_CPUS_PER_TASK'])
-        print(f'Detected {NUM_WORKERS} cpus')
+        print(f'Detected {NUM_WORKERS} cpus by 2d sliced dataset')
     else:
         NUM_WORKERS = 4
         print(f'Number of workers set to {NUM_WORKERS} cpus')
