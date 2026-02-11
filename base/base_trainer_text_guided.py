@@ -22,9 +22,9 @@ class BaseTrainerText(BaseTrainer):
         self,
         *args,
         use_text_guidance: bool = True,
-        text_emb_dim_in: int = 768,
+        text_emb_dim_in: int = None,
         guidance_hidden_dim: int = 1024,   # internal MLP hidden
-        guidance_out_dim: int = 512,       # shared space dim for contrastive
+        guidance_mode: int = None,
         text_emb_key: str = "text_emb",
         **kwargs
     ):
@@ -48,15 +48,15 @@ class BaseTrainerText(BaseTrainer):
 
 
         self.use_text_guidance = use_text_guidance
-        self.text_emb_dim_in = text_emb_dim_in
+        self.text_emb_dim_in = self.config.trainer.get("text_emb_dim_in", text_emb_dim_in)
         self.text_emb_key = text_emb_key
 
-        if hasattr(self.config, "model") and isinstance(self.config.model, dict):
-            guidance_hidden_dim = self.config.model.get("guidance_hidden_dim", guidance_hidden_dim)
-            guidance_out_dim = self.config.model.get("guidance_out_dim", guidance_out_dim)
+        if hasattr(self.config, "trainer"):
+            guidance_hidden_dim = self.config.trainer.get("guidance_hidden_dim", guidance_hidden_dim)
+            guidance_mode = self.config.trainer.get("guidance_mode", guidance_mode)
 
         self.guidance_hidden_dim = guidance_hidden_dim
-        self.guidance_out_dim = guidance_out_dim
+        self.guidance_mode = guidance_mode
 
         self.loss = self.loss.to(self.device)
 
@@ -73,7 +73,7 @@ class BaseTrainerText(BaseTrainer):
                 bottleneck_channels=bottleneck_channels,
                 text_dim=self.text_emb_dim_in,
                 hidden_dim=self.guidance_hidden_dim,
-                out_dim=self.guidance_out_dim,
+                mode=self.guidance_mode,
             ).to(self.device)
 
             # Rebuild optimizer + scheduler so that they include guidance head params
@@ -114,7 +114,7 @@ class BaseTrainerText(BaseTrainer):
             'text_emb_dim_in': self.text_emb_dim_in,
             'text_emb_key': self.text_emb_key,
             'guidance_hidden_dim': self.guidance_hidden_dim,
-            'guidance_out_dim': self.guidance_out_dim,
+            'guidance_mode': self.guidance_mode,
 
             'guidance_head': self.guidance_head.state_dict() if self.guidance_head is not None else None,
         }

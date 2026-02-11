@@ -53,9 +53,9 @@ TEXTFT_RE = re.compile(
     (?P<base_optim>SGD|AdamW)_
     S(?P<split>\d+)_
     A(?P<base_job>\d+)_(?P<base_task>\d+)_
-    (?P<ft_optim>SGD|AdamW)_
     l(?P<lambda>[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)      # float or sci
-    -V(?P<version>\d+)_
+    _LV(?P<version>\d+)_
+    GM(?P<mode>\d+)_
     A(?P<ft_job>\d+)_(?P<ft_task>\d+)
     $
     """,
@@ -93,7 +93,6 @@ def parse_run_name(name: str) -> Optional[Dict]:
             "task_id": int(m.group("task")),
             # textft-specific fields kept for schema compatibility
             "base_optimizer": "",
-            "ft_optimizer": "",
             "lambda": np.nan,
             "loss_version": np.nan,
             "base_job_array_id": np.nan,
@@ -104,6 +103,7 @@ def parse_run_name(name: str) -> Optional[Dict]:
 
     m = TEXTFT_RE.match(name)
     if m:
+        print(f"Parsing textft run name: {name}")
         lam_raw = m.group("lambda")
         try:
             lam_val = float(lam_raw)
@@ -119,9 +119,9 @@ def parse_run_name(name: str) -> Optional[Dict]:
             # baseline-vs-ft optimizers
             "optimizer": "",  # not used in textft grouping
             "base_optimizer": m.group("base_optim"),
-            "ft_optimizer": m.group("ft_optim"),
             "lambda": lam_val,
             "loss_version": int(m.group("version")),
+            "guidance_mode": int(m.group("mode")),
             # baseline job/task + finetune job/task
             "base_job_array_id": int(m.group("base_job")),
             "base_task_id": int(m.group("base_task")),
@@ -208,7 +208,7 @@ def main():
     # 2) Average + std over splits per configuration
     # --------------------------
     baseline_group = ["mode", "batch_size", "depth", "optimizer"]
-    textft_group = ["mode", "batch_size", "depth", "base_optimizer", "ft_optimizer", "lambda", "loss_version"]
+    textft_group = ["mode", "batch_size", "depth", "base_optimizer", "lambda", "loss_version", "guidance_mode"]
 
     # Build a single "group_key" that lets us group both modes in one dataframe
     df["group_key"] = np.where(
@@ -220,7 +220,7 @@ def main():
     # Keep representative config columns (for readability)
     rep_cols = [
         "mode", "batch_size", "depth", "optimizer",
-        "base_optimizer", "ft_optimizer", "lambda", "loss_version"
+        "base_optimizer", "lambda", "loss_version", "guidance_mode",
     ]
 
     rep = df.groupby("group_key", dropna=False)[rep_cols].first().reset_index()

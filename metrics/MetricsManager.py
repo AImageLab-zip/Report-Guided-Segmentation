@@ -3,6 +3,7 @@ import wandb
 import numpy as np
 import torch
 import os
+import warnings
 from monai.networks.utils import one_hot
 
 class MetricsManager:
@@ -88,18 +89,29 @@ class MetricsManager:
                     # If necessary, expand singleton dimensions
                     if value_np.shape[0] == 1 and self.num_classes is not None:
                         value_np = np.repeat(value_np, self.num_classes, axis=0)
-                    value_np = np.nanmean(value_np, axis=0)
+                    # Reduce batch dimension while avoiding RuntimeWarning on all-NaN slices
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", category=RuntimeWarning)
+                        value_np = np.nanmean(value_np, axis=0)
+
+                    value_np = np.atleast_1d(value_np)
                     idx_offset = 1 if len(value_np) < self.num_classes else 0
+                    valid_vals = []
                     for idx, val in enumerate(value_np, start=idx_offset):
+                        # Skip undefined class values (e.g., empty GT/pred for HD95)
+                        if np.isnan(val):
+                            continue
                         class_name = self.class_names.get(idx, f'class_{idx}')
                         key = f'{metric_name}_{class_name}'
                         self.metric_sums[key] = self.metric_sums.get(key, 0.0) + val
                         self.metric_counts[key] = self.metric_counts.get(key, 0) + 1
+                        valid_vals.append(val)
                     # Update mean metric across all classes
-                    mean_value = np.nanmean(value_np)
-                    key = f'{metric_name}_mean'
-                    self.metric_sums[key] = self.metric_sums.get(key, 0.0) + mean_value
-                    self.metric_counts[key] = self.metric_counts.get(key, 0) + 1
+                    if valid_vals:
+                        mean_value = float(np.mean(valid_vals))
+                        key = f'{metric_name}_mean'
+                        self.metric_sums[key] = self.metric_sums.get(key, 0.0) + mean_value
+                        self.metric_counts[key] = self.metric_counts.get(key, 0) + 1
                 else:
                     # Single value tensor
                     val = value.item()

@@ -87,6 +87,7 @@ celerybeat-schedule
 
 # virtualenv
 .venv
+.venv_medsiglip
 venv/
 ENV/
 
@@ -126,6 +127,10 @@ datasets/test_qatacov.py
 scripts/create_qatacov_split_variants.py
 config/generated/
 config/generated_textft
+config/generated_textft_2
+config/generated_textft_MSL
+config/generated_textft_BioBERT
+
 
 # editor, os cache directory
 .vscode/

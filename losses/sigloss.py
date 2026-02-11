@@ -12,17 +12,26 @@ class SigLoss(nn.Module):
       txt_emb: [B, D]
     Returns:
       scalar loss
+
+    Usage:
+    criterion = SigLoss(mode = SigLoss.STANDARD)
+    ...
+    loss = criterion(img_emb, txt_emg)
     """
+    STANDARD = 0            # Default SigLipLoss implementation
+    ONLY_POSITIVES = 1      # Only positive terms contribute
+    CONTINUOUS = 2          # Continuous weights in range [-1; +1] instead of hard -1 +1
+    IGNORE_DUPLICATES = 3   # Ignore duplicate reports in batch (same report for multiple images)
+
     def __init__(
         self,
         temperature_init: float = 0.1,      
         bias_init: float = -10.0,             
         learnable_temperature: bool = True,
         learnable_bias: bool = True,
-        mask_type: str = 'ignore_duplicates',  # 'pos_only', 'ignore_duplicates', 'all'
+        mode = None
     ):
         super().__init__()
-        self.mask_type = mask_type
 
         init_t = float(torch.log(torch.tensor(1.0 / temperature_init))) #log(10)
 
@@ -35,6 +44,9 @@ class SigLoss(nn.Module):
             self.bias = nn.Parameter(torch.tensor(bias_init))
         else:
             self.register_buffer("bias", torch.tensor(bias_init))
+
+        assert mode is not None, 'Please, pass an explicit mode param.'
+        self.mode = mode
 
     def forward(
         self,
@@ -62,40 +74,40 @@ class SigLoss(nn.Module):
 
         # labels: 2 * eye(B) - ones(B)
         B = img.shape[0]
-        labels = 2 * torch.eye(B, device=logits.device, dtype=logits.dtype) - 1  # +1 diag, -1 off
 
-        loss = -F.logsigmoid(labels * logits)
+        match self.mode:
+            case self.STANDARD:
+                labels = 2 * torch.eye(B, device=logits.device, dtype=logits.dtype) - 1  
+                loss = -F.logsigmoid(labels * logits).sum() / B
+            case self.ONLY_POSITIVES:
+                labels = 2 * torch.eye(B, device=logits.device, dtype=logits.dtype) - 1  
+                loss = -F.logsigmoid(labels * logits)
+                loss = (torch.eye(B, device=logits.device, dtype=logits.dtype) * loss).sum() / B 
+            case self.CONTINUOUS:
+                labels = txt @ txt.t()
+                loss = -F.logsigmoid(labels * logits).sum() / B**2
+            case self.IGNORE_DUPLICATES:
+                labels = 2 * torch.eye(B, device=logits.device, dtype=logits.dtype) - 1  
+                loss = -F.logsigmoid(labels * logits)
+                if report_idx is None:
+                    raise ValueError(
+                        "SigLoss(mask_type='ignore_duplicates') requires report_idx in forward()."
+                    )
+                if not torch.is_tensor(report_idx):
+                    report_idx = torch.as_tensor(report_idx, device=logits.device)
+                else:
+                    report_idx = report_idx.to(logits.device)
+                if report_idx.dim() > 1:
+                    report_idx = report_idx.view(-1)
 
-        # use flag for mask_type
-        if self.mask_type == 'pos_only':
-            # keep only positives
-            masked_loss = (torch.eye(B, device=logits.device, dtype=logits.dtype) * loss).sum() / B
-        elif self.mask_type == 'ignore_duplicates':
-            # ignore duplicates in batch (same report for multiple images)
-            if report_idx is None:
-                raise ValueError(
-                    "SigLoss(mask_type='ignore_duplicates') requires report_idx in forward()."
-                )
+                if report_idx.numel() != B:
+                    raise ValueError(
+                        f"report_idx must have B={B} elements, got shape {tuple(report_idx.shape)}"
+                    )
+                mask = (report_idx[:, None] != report_idx[None, :]).to(logits.dtype)
+                mask += torch.eye(B, device=logits.device, dtype=logits.dtype)  # keep positives
+                loss = (mask * loss).sum() / mask.sum().clamp(min=1.0)
+            case _:
+                raise RuntimeError(f'Invalid mode:{self.mode}')
 
-            if not torch.is_tensor(report_idx):
-                report_idx = torch.as_tensor(report_idx, device=logits.device)
-            else:
-                report_idx = report_idx.to(logits.device)
-
-            if report_idx.dim() > 1:
-                report_idx = report_idx.view(-1)
-
-            if report_idx.numel() != B:
-                raise ValueError(
-                    f"report_idx must have B={B} elements, got shape {tuple(report_idx.shape)}"
-                )
-
-            mask = (report_idx[:, None] != report_idx[None, :]).to(logits.dtype)
-            mask += torch.eye(B, device=logits.device, dtype=logits.dtype)  # keep positives
-            masked_loss = (mask * loss).sum() / mask.sum().clamp(min=1.0)
-        else:
-            masked_loss = loss.sum() / (B * B)
-
-
-
-        return masked_loss
+        return loss
