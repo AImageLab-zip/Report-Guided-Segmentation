@@ -7,21 +7,21 @@ from trainer import Trainer_3D, Trainer_2Dsliced, Trainer_3DText
 from trainer import Trainer_2D
 import torch
 from config import Config
+import torch.distributed as dist
 
 import os
 import debugpy
 
 def test_trainer3d():
     #c = Config("/work/grana_neuro/Brain-Segmentation/config/config_atlas.json")
-
-    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
-    port = 5678 + local_rank
-
-    debugpy.listen(("0.0.0.0", port))
-    print(f"Rank {os.environ.get('RANK')} waiting for debugger attach on {port}...")
-    debugpy.wait_for_client()
+    dist.init_process_group(backend="nccl", init_method="env://")
+    if dist.get_rank() == 0:
+        debugpy.listen(("0.0.0.0", 5679))
+        debugpy.wait_for_client()
     
-    c = Config("/leonardo/home/userexternal/kmarches/Report-Guided-Segmentation/config/config_brats3d_debug.json")
+    dist.barrier()  # Ensure all processes wait for the debugger to attach before proceeding
+    
+    c = Config("/leonardo/home/userexternal/kmarches/Report-Guided-Segmentation/config/config_brats3d_multi.json")
     print(c)
 
     #trainer = Trainer_3D(c, 1, True,"/work/grana_neuro/trained_models/ATLAS_2/3DUNet",resume=False, debug=True)
@@ -30,7 +30,13 @@ def test_trainer3d():
 
 def test_trainer3d_text():
     #c = Config("/work/grana_neuro/Brain-Segmentation/config/config_atlas.json")
-    c = Config("/leonardo/home/userexternal/kmarches/Report-Guided-Segmentation/config/config_brats3dtext.json")
+    dist.init_process_group(backend="nccl", init_method="env://")
+    '''if dist.get_rank() == 0:
+        debugpy.listen(("0.0.0.0", 5679))
+        debugpy.wait_for_client()
+
+    dist.barrier()'''  # Ensure all processes wait for the debugger to attach before proceeding
+    c = Config("/leonardo/home/userexternal/kmarches/Report-Guided-Segmentation/config/config_brats3dtext_multi.json")
     print(c)
 
     #trainer = Trainer_3D(c, 1, True,"/work/grana_neuro/trained_models/ATLAS_2/3DUNet",resume=False, debug=True)

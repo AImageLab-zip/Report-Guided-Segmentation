@@ -26,7 +26,7 @@ class Trainer_3D(BaseTrainer):
         """
         self.model.train()
         self.train_sampler.set_epoch(epoch)
-        iterator = tqdm(enumerate(self.train_loader), desc=f'Epoch {epoch}', total=len(self.train_loader)) if dist.get_rank()==0 else enumerate(self.train_loader)
+        iterator = tqdm(enumerate(self.train_loader), desc=f'Epoch {epoch}', total=len(self.train_loader)) if (dist.get_rank()==0 and not self.debug) else enumerate(self.train_loader)
         for idx, sample in iterator:
             image = sample['image'][tio.DATA].float().to(self.device)
             label = _onehot_enc(sample['label'][tio.DATA].long(), self.num_classes).float().to(self.device)
@@ -79,7 +79,7 @@ class Trainer_3D(BaseTrainer):
         self.model.eval()
         loader = getattr(self, f'{phase}_loader')
         metrics_manager = getattr(self, f'{phase}_metrics')
-        iterator = tqdm(enumerate(loader), desc=f'{phase}, epoch {epoch}', total=len(loader)) if dist.get_rank() == 0 else enumerate(loader)
+        iterator = tqdm(enumerate(loader), desc=f'{phase}, epoch {epoch}', total=len(loader)) if (dist.get_rank() == 0 and not self.debug) else enumerate(loader)
         for idx, sample in iterator:
             # Convert batch dictionary back to Subject (batch_size=1)
             subject = tio.Subject(
@@ -133,7 +133,7 @@ class Trainer_3D(BaseTrainer):
         pred_aggregator = tio.inference.GridAggregator(grid_sampler, overlap_mode="hann")
         label_aggregator = tio.inference.GridAggregator(grid_sampler, overlap_mode="hann")
 
-        num_workers = int(os.environ.get('SLURM_CPUS_PER_TASK', 1))
+        #num_workers = int(os.environ.get('SLURM_CPUS_PER_TASK', 1))
         loader = tio.SubjectsLoader(
             grid_sampler,
             #num_workers=num_workers,

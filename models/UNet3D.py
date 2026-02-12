@@ -64,7 +64,7 @@ class UpConvBlock(nn.Module):
 
 
 class UNet3D(BaseModel):
-    def __init__(self, in_channels, num_classes, size=32, depth=3,t_prime_init = 0.1,bias_init = -10.0):
+    def __init__(self, in_channels, num_classes, size=32, depth=3):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = num_classes
@@ -88,9 +88,6 @@ class UNet3D(BaseModel):
                                         [self.size*2, self.size*2],
                                         up_conv=False)
         self.out_layer = nn.Conv3d(self.size * 2, self.out_channels, kernel_size=1, stride=1, padding=0)
-
-        self.t_prime = nn.Parameter(torch.tensor(t_prime_init))
-        self.bias_init = nn.Parameter(torch.tensor(bias_init))
     
 
     def forward(self, x):
@@ -120,6 +117,10 @@ class UNet3D(BaseModel):
             del feat_list[int(block)]
 
         out = self.out_layer(out)
+
+        # Ensure DDP tracks t_prime/bias in the forward graph
+        # (these parameters are used in the loss outside forward)
+        out = out + (self.t_prime * 0.0) + (self.bias * 0.0)
 
         if pre_padding:
             out = unpad_3d(out, pads)

@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 
 from .UNet3D import UNet3D
 from .TextGuidanceHead import ReportGuidanceHead
@@ -21,6 +22,10 @@ class UNet3DText(UNet3D):
         text_dim=768,
         guidance_hidden_dim=1024,
         guidance_out_dim=512,
+        text_proj=True,
+        img_proj=True,
+        t_prime_init=0.1,
+        bias_init=-10.0,
     ):
         super().__init__(in_channels=in_channels, num_classes=num_classes, size=size, depth=depth)
 
@@ -31,7 +36,12 @@ class UNet3DText(UNet3D):
             hidden_dim=guidance_hidden_dim,
             out_dim=guidance_out_dim,
             spatial_dims=3,
+            text_proj=text_proj,
+            img_proj=img_proj,
         )
+        t_init = torch.log(torch.tensor(1.0 / t_prime_init))
+        self.t_prime = nn.Parameter(t_init)
+        self.bias = nn.Parameter(torch.tensor(bias_init, dtype=torch.float32))
 
     def forward(self, x, text_emb=None):
         feat_list = []
@@ -58,6 +68,10 @@ class UNet3DText(UNet3D):
 
         out = self.out_layer(out)
 
+        # Ensure DDP tracks t_prime/bias in the forward graph
+        # (these parameters are used in the loss outside forward)
+        out = out + (self.t_prime * 0.0) + (self.bias * 0.0)
+
         if pre_padding:
             out = unpad_3d(out, pads)
 
@@ -67,5 +81,3 @@ class UNet3DText(UNet3D):
             z_img, z_txt = self.guidance_head(bottleneck_feat, text_emb)
             return out, z_img, z_txt
         
-# APPURA SE IL LOAD DEI CHECKPOINT SENZA GUIDANCE HEAD FUNZIONA
-# TESTALO DIRETTAMENTE NEL TRAINER

@@ -14,6 +14,8 @@ import os
 import itertools
 from utils.util import _onehot_enc
 from datasets.DatasetFactory import DatasetFactory
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 class Trainer_3DText(BaseTrainer):
     """
@@ -33,6 +35,9 @@ class Trainer_3DText(BaseTrainer):
         :return: A log that contains average loss and metric in this epoch.
         """
         self.model.train()
+        self.train_sampler.set_epoch(epoch)
+        self.train_reports_sampler.set_epoch(epoch) if self.train_reports_sampler is not None else None
+        iterator = tqdm(enumerate(self.train_loader), desc=f'Epoch {epoch}', total=len(self.train_loader)) if (dist.get_rank()==0 and not self.debug) else enumerate(self.train_loader)
 
         def _train_step(sample, use_report=False):
             image = sample['image'][tio.DATA].float().to(self.device)
@@ -47,7 +52,8 @@ class Trainer_3DText(BaseTrainer):
                     prediction, z_img, z_txt = self.model(image, report)
                     #if isinstance(prediction, (tuple, list)):
                         #prediction = prediction[0]
-                    loss = self.loss(prediction, label, z_img, z_txt)
+
+                    loss = self.loss(prediction, label, z_img, z_txt, self.model.module.t_prime, self.model.module.bias)
                 else:
                     prediction = self.model(image)
                     loss = self.loss(prediction, label)
@@ -73,7 +79,7 @@ class Trainer_3DText(BaseTrainer):
             if len(self.train_reports_loader) > 0:
                 reports_iter = itertools.cycle(self.train_reports_loader)
 
-        for idx, sample in tqdm(enumerate(self.train_loader), desc=f'Epoch {epoch}', total=len(self.train_loader)):
+        for idx, sample in iterator:
             loss = _train_step(sample, use_report=False)
             if self.debug:
                 print(f"E: {epoch}\tI: {idx}\tL: {loss.item()}")
@@ -93,7 +99,9 @@ class Trainer_3DText(BaseTrainer):
 
         if self.lr_scheduler is not None:
             self.lr_scheduler.step()
-
+        
+        torch.cuda.empty_cache()
+        dist.barrier()
         return results
 
     @torch.inference_mode() #Context manager analogous to no_grad
@@ -109,7 +117,9 @@ class Trainer_3DText(BaseTrainer):
         self.model.eval()
         loader = getattr(self, f'{phase}_loader')
         metrics_manager = getattr(self, f'{phase}_metrics')
-        for idx, sample in tqdm(enumerate(loader), desc=f'{phase}, epoch {epoch}', total=len(loader)):
+        iterator = tqdm(enumerate(loader), desc=f'{phase}, epoch {epoch}', total=len(loader)) if (dist.get_rank() == 0 and not self.debug) else enumerate(loader)
+
+        for idx, sample in iterator:
             # Convert batch dictionary back to Subject (batch_size=1)
             subject = tio.Subject(
                 image=tio.ScalarImage(tensor=sample['image']['data'][0]),
@@ -130,13 +140,15 @@ class Trainer_3DText(BaseTrainer):
 
             # Pass raw predictions (logits) to metrics - they handle conversion as needed
             metrics_manager.update_metrics(prediction, label)
+            del prediction, label
 
         # After all iterations in the epoch, compute and store the epoch metrics
         metrics_manager.compute_epoch_metrics(epoch)
         metrics_manager.save_to_csv(self.save_path)
 
         results = self._results_dict(phase, epoch)
-
+        torch.cuda.empty_cache()
+        dist.barrier()
         return results
 
     def _inference_sampler(self, sample: tio.Subject):
@@ -162,7 +174,7 @@ class Trainer_3DText(BaseTrainer):
         pred_aggregator = tio.inference.GridAggregator(grid_sampler, overlap_mode="hann")
         label_aggregator = tio.inference.GridAggregator(grid_sampler, overlap_mode="hann")
 
-        num_workers = int(os.environ.get('SLURM_CPUS_PER_TASK', 1))
+        #num_workers = int(os.environ.get('SLURM_CPUS_PER_TASK', 1))
 
         loader = tio.SubjectsLoader(
             grid_sampler,
@@ -202,9 +214,9 @@ class Trainer_3DText(BaseTrainer):
         :param split_ratio: current epoch number
         """
         self.dataset = DatasetFactory.create_instance(self.config, self.validation, self.train_transforms, self.test_transforms)
-        self.train_loader = self.dataset.get_loader('train')
+        self.train_loader, self.train_sampler = self.dataset.get_loader('train')
         self.test_loader = self.dataset.get_loader('test')
-        self.train_reports_loader = self.dataset.get_loader('train', report=True)
+        self.train_reports_loader, self.train_reports_sampler = self.dataset.get_loader('train', report=True)
         if self.validation:
             self.val_loader = self.dataset.get_loader('val')
         else:
@@ -219,10 +231,11 @@ class Trainer_3DText(BaseTrainer):
 
         ckpt = torch.load(self.pretrained_path, map_location=self.device)
         state_dict = ckpt["model"] if isinstance(ckpt, dict) and "model" in ckpt else ckpt
-        model_to_load = self.model.module if isinstance(self.model, torch.nn.DataParallel) else self.model
+        model_to_load = self.model.module if isinstance(self.model, DDP) else self.model
         missing, unexpected = model_to_load.load_state_dict(state_dict, strict=False)
         print(f"[Pretrain] Loaded model weights from {self.pretrained_path}")
         print(f"[Pretrain] Missing keys: {len(missing)} | Unexpected keys: {len(unexpected)}")
+        print(f"[Pretrain] Missing keys: {missing} | Unexpected keys: {unexpected}")
         
 
 
