@@ -6,7 +6,7 @@
     "name": "QaTaCovTextEmb",
     "path": "/leonardo_work/IscrC_narc2/reports_project/QaTa-COV19/QaTa-COV19-v2_preprocessed_gt",
     "split_file": "/leonardo_work/IscrC_narc2/reports_project/QaTa-COV19/QaTa-COV19-v2_preprocessed_gt/qatacov_split__SPLIT__.xlsx",
-    "text_emb_dir": "/leonardo_work/IscrC_narc2/reports_project/QaTa-COV19/Text_Embeddings/MedSigLip",
+    "text_emb_dir": "/leonardo_work/IscrC_narc2/reports_project/QaTa-COV19/Text_Embeddings/BioBERT/CLS",
     "batch_size": __BS__,
     "image_size": [224, 224],
     "transforms": "config/qatacov2d_transforms.json"
@@ -28,7 +28,7 @@
   },
   "trainer": {
     "name": "Trainer_2D_TextGuided",
-    "text_emb_dim_in": 1152,
+    "text_emb_dim_in": 768,
     "guidance_mode": __MODE__
 },
   "loss": {

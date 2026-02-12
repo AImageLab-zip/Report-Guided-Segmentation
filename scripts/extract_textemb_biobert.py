@@ -23,6 +23,11 @@ def parse_args() -> argparse.Namespace:
         help="Path to the config JSON file.",
     )
     parser.add_argument(
+        "--model_name",
+        default="dmis-lab/biobert-base-cased-v1.1",
+        help="Model card to be used to compute embeddings"
+    )
+    parser.add_argument(
         "--save_directory",
         default="/path/to/save_directory",
         help="Directory where text embeddings will be saved.",
@@ -86,6 +91,7 @@ def main() -> None:
 
     precompute_unique_report_embeddings(
         dataloader=chain(train_loader, val_loader),
+        model_name=args.model_name,
         save_directory=args.save_directory,
         device="cuda" if torch.cuda.is_available() else "cpu",
         max_length=args.max_len,
