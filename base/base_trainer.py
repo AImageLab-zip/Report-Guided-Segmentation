@@ -43,12 +43,7 @@ class BaseTrainer:
         self.use_wandb = use_wandb
         self.wandb_run_id = None
         self.save_visualizations = save_visualizations
-        # Mixed precision setup
         self.mixed_precision = mixed_precision
-        self.use_amp = self.device.type == 'cuda' and self.mixed_precision in ['fp16', 'bf16']
-        self.amp_dtype = torch.float16 if self.mixed_precision == 'fp16' else torch.bfloat16
-        self.use_scaler = self.device.type == 'cuda' and self.mixed_precision == 'fp16'
-        self.scaler = GradScaler(enabled=self.use_scaler)
 
         self.model = ModelFactory.create_instance(self.config)
         
@@ -68,7 +63,7 @@ class BaseTrainer:
             raise RuntimeError(error_message)
         
         # Process group init
-        dist.init_process_group(backend="nccl", init_method="env://")
+        #dist.init_process_group(backend="nccl", init_method="env://")
 
         # Check if multinode (not allowed)
         tot_gpus = dist.get_world_size()
@@ -77,12 +72,17 @@ class BaseTrainer:
             raise RuntimeError('This script doesn\'t currently support multi node training.')
         
         # Getting the device:
-        self.device =  torch.device(f"cuda:{dist.get_rank()}")
+        self.device = torch.device(f"cuda:{dist.get_rank()}")
+
+        # Mixed precision setup (after device is defined)
+        self.use_amp = self.device.type == 'cuda' and self.mixed_precision in ['fp16', 'bf16']
+        self.amp_dtype = torch.float16 if self.mixed_precision == 'fp16' else torch.bfloat16
+        self.use_scaler = self.device.type == 'cuda' and self.mixed_precision == 'fp16'
+        self.scaler = GradScaler(enabled=self.use_scaler)
 
         # Wrap model with DataParallel if n_gpu > 1
         self.model = DDP(self.model.to(self.device),find_unused_parameters=True)
     
-        
         self.optimizer, self.lr_scheduler = OptimizerFactory.create_instance(self.model, self.config)
 
         self.loss_name, self.loss = LossFactory.create_instance(self.config)
@@ -166,7 +166,7 @@ class BaseTrainer:
         :param split_ratio: current epoch number
         """
         self.dataset = DatasetFactory.create_instance(self.config, self.validation, self.train_transforms, self.test_transforms)
-        self.train_loader,self.train_sampler = self.dataset.get_loader('train')
+        self.train_loader, self.train_sampler = self.dataset.get_loader('train')
         self.test_loader = self.dataset.get_loader('test')
         if self.validation:
             self.val_loader = self.dataset.get_loader('val')

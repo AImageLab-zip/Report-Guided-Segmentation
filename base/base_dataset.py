@@ -10,7 +10,9 @@ import torch
 class BaseDataset:
 
     if 'SLURM_CPUS_PER_TASK' in os.environ:
-        NUM_WORKERS = int(os.environ['SLURM_CPUS_PER_TASK'])
+        cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1))
+        local_world = int(os.environ.get("LOCAL_WORLD_SIZE", 1))  # torchrun sets this
+        NUM_WORKERS = max(1, cpus // local_world)
     else:
         NUM_WORKERS = 4  # Set to a fixed number if the environment variable does not exist
 

@@ -8,6 +8,30 @@ import torch
 import numpy as np
 import torchio as tio
 
+class AddTumorSamplingMap(tio.Transform):
+    """
+    Adds a sampling probability map:
+      - label > 0  -> weight 5
+      - label == 0 -> weight 1
+    Stored as subject["sampling_map"] with type tio.SAMPLING_MAP.
+    """
+    def __init__(self):
+        super().__init__()
+
+    def apply_transform(self, subject: tio.Subject) -> tio.Subject:
+        label_img = subject["label"]      # tio.LabelMap
+        lbl = label_img.data             # (1, D, H, W)
+
+        tumor = (lbl > 0).to(torch.float32)
+        prob = tumor * 5.0 + (1.0 - tumor) * 1.0
+
+        subject["sampling_map"] = tio.Image(
+            tensor=prob,
+            affine=label_img.affine,
+            type=tio.SAMPLING_MAP,
+        )
+        return subject
+
 class BraTS3D(BaseDataset):
     """
     Class for BraTS3D dataset creation and loading
@@ -43,6 +67,47 @@ class BraTS3D(BaseDataset):
 
         return train_images, train_labels, val_images, val_labels, test_images, test_labels
 
+    
+    def _get_patch_loader(self, dataset: tio.SubjectsDataset, batch_size: int = 1):
+        use_weighted = bool(self.config.dataset.get("weighted_sampler", False))
+        patch_size = self.config.dataset["patch_size"]
+
+        if use_weighted:
+            add_map = AddTumorSamplingMap()
+
+            # TorchIO compatibility: use _transform (not transform)
+            current_t = getattr(dataset, "_transform", None)
+
+            if current_t is None:
+                dataset._transform = add_map
+            else:
+                dataset._transform = tio.Compose([add_map, current_t])
+
+            sampler = tio.WeightedSampler(
+                patch_size=patch_size,
+                probability_map="sampling_map",
+            )
+        else:
+            sampler = tio.UniformSampler(patch_size=patch_size)
+
+        queue = tio.Queue(
+            subjects_dataset=dataset,
+            max_length=self.config.dataset["queue_length"],
+            samples_per_volume=self.config.dataset["samples_per_volume"],
+            sampler=sampler,
+            num_workers=self.NUM_WORKERS,
+            shuffle_subjects=True,
+            shuffle_patches=True,
+            start_background=False,
+        )
+
+        loader = tio.SubjectsLoader(
+            queue,
+            batch_size=batch_size,
+            num_workers=0,
+            pin_memory=False,
+        )
+        return loader
     
     def get_loader(self, split):
 

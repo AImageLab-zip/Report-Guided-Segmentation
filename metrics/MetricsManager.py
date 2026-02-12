@@ -183,16 +183,28 @@ class MetricsManager:
         Identical results are stored on every rank.
         """
         row_data = {'epoch': epoch}
+        if dist.is_available() and dist.is_initialized():
+            torch.cuda.set_device(dist.get_rank())  # Ensure each process uses the correct GPU
 
-        for key in list(self.metric_sums.keys()):
+            keys = list(self.metric_sums.keys())
+            world_size = dist.get_world_size()
+            if world_size > 1:
+                all_keys = [None for _ in range(world_size)]
+                dist.all_gather_object(all_keys, keys)
+                keys = sorted({k for sub in all_keys for k in sub})
+        else:
+            keys = list(self.metric_sums.keys())
+
+        for key in keys:
 
             # local --> tensor
-            s = torch.tensor(self.metric_sums[key], device="cuda", dtype=torch.float64)
-            c = torch.tensor(self.metric_counts[key], device="cuda", dtype=torch.float64)
+            s = torch.tensor(self.metric_sums.get(key, 0.0), device="cuda", dtype=torch.float64)
+            c = torch.tensor(self.metric_counts.get(key, 0.0), device="cuda", dtype=torch.float64)
 
             # global reduction
-            dist.all_reduce(s, op=dist.ReduceOp.SUM)
-            dist.all_reduce(c, op=dist.ReduceOp.SUM)
+            if dist.is_available() and dist.is_initialized():
+                dist.all_reduce(s, op=dist.ReduceOp.SUM)
+                dist.all_reduce(c, op=dist.ReduceOp.SUM)
 
             # overwrite local state with global values
             self.metric_sums[key] = s.item()
