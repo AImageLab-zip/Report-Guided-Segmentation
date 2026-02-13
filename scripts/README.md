@@ -3,17 +3,43 @@
 Utility scripts for preprocessing and auxiliary workflows.
 
 ## 📄 [`extract_textemb_biobert.py`](extract_textemb_biobert.py)
-Precomputes BioBERT report embeddings for the QaTaCov dataset and stores them on disk.
+Precomputes BioBERT report embeddings.
+
+The script supports two modes:
+
+- `--mode brats3d` (default): writes one `.npz` embedding per BraTS case into
+  `<dataset_root>/<report_folder>/<case_id>.npz`, matching
+  `datasets/BraTS3DText.py` lookup logic.
+- `--mode qatacov`: legacy QaTaCov export to a shared embedding directory.
 
 **Outputs:**
 - `reports_emb.npy`
 - `reports_meta.json`
 - `image_to_report_idx.json`
 
-**Typical usage:**
+**Typical usage (BraTS3D / BraTS3DText):**
 
 ```bash
 python scripts/extract_textemb_biobert.py \
+  --mode brats3d \
+  --config ./config/config_brats3d.json \
+  --reports_path /path/to/brats_reports_txt_or_json \
+  --report_folder rep_RG \
+  --pooling mean \
+  --max_len 256 \
+  --overwrite
+```
+
+`--reports_path` can be either:
+
+- a directory with `<BraTS-case-id>.txt` files, or
+- a JSON file mapping `case_id -> report_text`.
+
+**Typical usage (QaTaCov, legacy):**
+
+```bash
+python scripts/extract_textemb_biobert.py \
+  --mode qatacov \
   --config ./config/config_qatacov2d.json \
   --save_directory /path/to/Text_Embeddings/BioBERT \
   --pooling mean \

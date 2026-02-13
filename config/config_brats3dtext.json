@@ -1,0 +1,93 @@
+{
+  "name": "BraTS3DText_depth4_SGD",
+  "n_gpu": 4,
+
+  "dataset": {
+    "name": "BraTS3DText",
+    "path": "/leonardo_work/IscrC_narc2/reports_project/BRATS2023_Training_nifti",
+    "report_folder": "rep_RG",
+    "reports_path": "/leonardo_work/IscrC_narc2/reports_project/BRATS2023_Training_nifti/RG_reports.json",
+
+    "patch_size": 128,
+    "grid_overlap": 0,
+    "queue_length": 100,
+    "samples_per_volume": 2,
+    "batch_size": 16,
+    "split_file": "./split_files/BraTS23_reports.json",
+    "transforms": "./config/brats3d_transforms.json"
+  },
+
+  "classes": {
+    "0": "Background",
+    "1": "Necrosi",
+    "2": "Edema",
+    "3": "Enhancing Tumor"
+  },
+
+  "aggregated_regions": {
+    "ET": [3],
+    "TC": [1, 3],
+    "WT": [1, 2, 3]
+  },
+
+  "model": {
+    "name": "UNet3DText",
+    "in_channels": 4,
+    "num_classes": 4,
+    "size": 32,
+    "depth": 4,
+    "text_dim": 768,
+    "guidance_hidden_dim": 1024,
+    "guidance_out_dim": 512
+  },
+
+  "loss": {
+    "name": "CombinedSegSigLoss",
+
+    "seg_loss_name": "DiceFocalLoss",
+    "seg_loss_kwargs": {
+      "include_background": false,
+      "softmax": true
+    },
+
+    "lambda_sig": 0.1,
+
+    "sigloss_kwargs": {
+      "learnable_temperature": true,
+      "learnable_bias": true
+    }
+  },
+
+  "optimizer": {
+    "name": "SGD",
+    "lr": 0.01,
+    "momentum": 0.99,
+    "weight_decay": 0.00003,
+    "nesterov": true
+  },
+
+  "scheduler": {
+    "name": "PolynomialLR",
+    "total_iters": 22000,
+    "power": 0.9
+  },
+
+  "metrics": [
+    {
+      "key": "DSC",
+      "name": "DiceMetric",
+      "params": { "include_background": false },
+      "train": true,
+      "val": true,
+      "test": true
+    },
+    {
+      "key": "HD95",
+      "name": "HausdorffDistanceMetric",
+      "params": { "percentile": 95 },
+      "train": false,
+      "val": true,
+      "test": true
+    }
+  ]
+}

@@ -124,6 +124,12 @@ QaTaCov19-v2/
 config/config_qatacov_preprocess.json
 datasets/test_qatacov.py
 scripts/create_qatacov_split_variants.py
+.venv_medsiglip/
+config/generated/
+config/generated_textft/
+config/generated_textft_2/
+config/generated_textft_BioBERT/
+config/generated_textft_MSL/
 
 # editor, os cache directory
 .vscode/
