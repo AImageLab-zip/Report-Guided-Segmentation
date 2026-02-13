@@ -38,12 +38,12 @@ class CombinedSegSigLoss(nn.Module):
             self.sig_loss = SigLoss(**sigloss_kwargs)
         self.lambda_sig = float(lambda_sig)
 
-    def forward(self, prediction: torch.Tensor, target: torch.Tensor, img_emb=None, txt_emb=None,t_prime=None,bias=None):
+    def forward(self, prediction: torch.Tensor, target: torch.Tensor, img_emb=None, txt_emb=None, t_prime=None, bias=None):
         seg = self.seg_loss(prediction, target)
 
         # If embeddings are missing, behave like baseline loss
         if img_emb is None or txt_emb is None or self.lambda_sig == 0.0:
             return seg
 
-        sig = self.sig_loss(img_emb, txt_emb,t_prime,bias)
+        sig = self.sig_loss(img_emb, txt_emb, t_prime, bias)
         return seg + self.lambda_sig * sig

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from config import Config
 import trainer
+import torch.distributed as dist
 
 
 def parse_args():
@@ -125,6 +126,8 @@ def main():
     save_path = Path(args.save_path)
     save_path.mkdir(parents=True, exist_ok=True)
     print(f"Model checkpoints will be saved to: {args.save_path}")
+
+    dist.init_process_group(backend="nccl", init_method="env://")
     
     TrainerClass = getattr(trainer, args.trainer)
     print(f"\nInitializing {TrainerClass.__name__}...")

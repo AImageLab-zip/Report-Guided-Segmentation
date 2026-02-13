@@ -60,10 +60,10 @@ class SigLoss(nn.Module):
         # t = exp(t_prime)
         # logits = logits * t + bias
         if self.t_prime is not None:
-            t = torch.exp(t_prime).clamp(max=100) 
+            t = torch.exp(self.t_prime).clamp(max=100) 
             logits = logits * t
         if self.bias is not None:
-            logits = logits + bias
+            logits = logits + self.bias
 
         # labels: 2 * eye(B) - ones(B)
         B = img.shape[0]
@@ -217,15 +217,21 @@ class DistributedSigLoss(nn.Module):
       journal={arXiv preprint arXiv:2303.15343},
       year={2023}
     }
+
+    Usage:
+    criterion = DistributedSigLoss(mode=DistributedSigLoss.STANDARD)
     """
+    STANDARD = 0
+    ONLY_POSITIVES = 1
+    CONTINUOUS = 2
     def __init__(
             self,
-            continuous_weights = False
+            mode = None
     ):
         super().__init__()
         self.cache_labels = False
         self.bidir = True
-        self.continuous_weights = continuous_weights
+        self.mode = mode
 
         # cache state FIXME cache not currently used, worthwhile?
         self.prev_num_logits = 0
@@ -257,16 +263,31 @@ class DistributedSigLoss(nn.Module):
 
     def _loss(self, image_features, text_features, t_prime, bias=None, negative_only=False):
         logits = self.get_logits(image_features, text_features, t_prime, bias)
-        if self.continuous_weights:
-            labels = text_features @ text_features.T
-        else:
-            labels = self.get_ground_truth(
+        match self.mode:
+            case self.CONTINUOUS:
+                labels = text_features @ text_features.T
+                loss = -F.logsigmoid(labels * logits).sum() / (image_features.shape[0]**2)
+            case self.ONLY_POSITIVES:
+                labels = self.get_ground_truth(
                 image_features.device,
                 image_features.dtype,
                 image_features.shape[0],
                 negative_only=negative_only,
-            )
-        loss = -F.logsigmoid(labels * logits).sum() / image_features.shape[0]
+                )
+                loss = (labels * logits) * (labels == 1)
+                loss = -F.logsigmoid(loss).sum() / image_features.shape[0]
+            case self.STANDARD:
+                labels = self.get_ground_truth(
+                image_features.device,
+                image_features.dtype,
+                image_features.shape[0],
+                negative_only=negative_only,
+                )
+                loss = (labels * logits) 
+                loss = -F.logsigmoid(loss).sum() / (image_features.shape[0]**2)
+            case _:
+                raise RuntimeError('Invalid mode configuration in DistributedSigLoss')
+
         return loss
 
     def forward(self, img, txt, t_prime, bias):
