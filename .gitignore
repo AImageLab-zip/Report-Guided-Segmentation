@@ -130,6 +130,7 @@ config/generated_textft/
 config/generated_textft_2/
 config/generated_textft_BioBERT/
 config/generated_textft_MSL/
+prova.py
 
 # editor, os cache directory
 .vscode/

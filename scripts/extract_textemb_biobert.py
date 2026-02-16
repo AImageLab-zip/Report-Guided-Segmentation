@@ -1,14 +1,15 @@
 import argparse
 import json
 import os
+import re
 import sys
 from glob import glob
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import torch
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, AutoTokenizer, AutoModelForMaskedLM
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PROJECT_ROOT not in sys.path:
@@ -47,8 +48,10 @@ def parse_args() -> argparse.Namespace:
         "--reports_path",
         default=None,
         help=(
-            "BraTS reports source. Can be either: (1) a directory of <case_id>.txt files, "
-            "or (2) a JSON file mapping case_id -> report text."
+            "BraTS reports source. Supported formats: "
+            "(1) directory of <case_id>.txt files, "
+            "(2) JSON file mapping case_id -> report text, "
+            "(3) nested directory <root>/<case_id>/eng.txt (or eng.json)."
         ),
     )
     parser.add_argument(
@@ -73,8 +76,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max_len",
         type=int,
-        default=256,
-        help="Maximum token length for text embeddings.",
+        default=512,
+        help="Maximum token length for text embeddings (BioBERT supports up to 512).",
     )
     parser.add_argument(
         "--no_safetensors",
@@ -85,6 +88,29 @@ def parse_args() -> argparse.Namespace:
         "--overwrite",
         action="store_true",
         help="Overwrite existing embeddings if present.",
+    )
+    parser.add_argument(
+        "--chunk_long_reports",
+        action="store_true",
+        help=(
+            "If set, reports longer than --max_len are encoded with sliding-window chunks "
+            "and aggregated into a single embedding."
+        ),
+    )
+    parser.add_argument(
+        "--chunk_stride",
+        type=int,
+        default=128,
+        help=(
+            "Token overlap between consecutive chunks when --chunk_long_reports is enabled. "
+            "Must be smaller than --max_len."
+        ),
+    )
+    parser.add_argument(
+        "--chunk_aggregation",
+        default="mean",
+        choices=["mean", "max"],
+        help="How to combine chunk embeddings for one report when chunking is enabled.",
     )
     return parser.parse_args()
 
@@ -112,12 +138,52 @@ def _load_brats_case_ids(dataset_root: str, split_file: str) -> List[str]:
 
 
 def _load_brats_reports_map(reports_path: str) -> Dict[str, str]:
+    def _text_from_json_obj(obj: Any) -> str:
+        if isinstance(obj, str):
+            return obj
+        if isinstance(obj, dict):
+            for key in ("report", "text", "eng", "en"):
+                if key in obj and isinstance(obj[key], str):
+                    return obj[key]
+        return ""
+
     if os.path.isdir(reports_path):
         mapping: Dict[str, str] = {}
+
+        # Legacy flat format: <case_id>.txt
         for txt_path in glob(os.path.join(reports_path, "*.txt")):
             case_id = Path(txt_path).stem
             with open(txt_path, "r", encoding="utf-8", errors="ignore") as f:
                 mapping[case_id] = f.read()
+
+        # New nested format: <root>/<case_id>/eng.txt or eng.json
+        root = Path(reports_path)
+        for eng_path in root.rglob("eng.txt"):
+            if not eng_path.is_file():
+                continue
+            case_id = eng_path.parent.name
+            with open(eng_path, "r", encoding="utf-8", errors="ignore") as f:
+                mapping[case_id] = f.read()
+
+        for eng_json_path in root.rglob("eng.json"):
+            if not eng_json_path.is_file():
+                continue
+            case_id = eng_json_path.parent.name
+            with open(eng_json_path, "r", encoding="utf-8", errors="ignore") as f:
+                payload = json.load(f)
+            text = _text_from_json_obj(payload)
+            if text:
+                mapping[case_id] = text
+
+        # Optional flat JSON-per-case support: <case_id>.json
+        for json_path in glob(os.path.join(reports_path, "*.json")):
+            case_id = Path(json_path).stem
+            with open(json_path, "r", encoding="utf-8", errors="ignore") as f:
+                payload = json.load(f)
+            text = _text_from_json_obj(payload)
+            if text:
+                mapping[case_id] = text
+
         return mapping
 
     if reports_path.lower().endswith(".json"):
@@ -127,7 +193,36 @@ def _load_brats_reports_map(reports_path: str) -> Dict[str, str]:
             raise ValueError("BraTS reports JSON must be a dict mapping case_id -> report text.")
         return {str(k): str(v) for k, v in data.items()}
 
-    raise ValueError("--reports_path must be a directory of .txt files or a JSON mapping file.")
+    raise ValueError(
+        "--reports_path must be either: a directory (flat or nested with <case_id>/eng.txt|eng.json), "
+        "or a JSON mapping file."
+    )
+
+
+def normalize_report(text: str) -> str:
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = text.replace("•", "- ")
+    text = text.replace("–", "-").replace("—", "-")
+    # remove extra spaces around newlines
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    # collapse multiple blank lines
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    # collapse runs of spaces
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return text.strip()
+
+
+def _pool_hidden_states(last_hidden: torch.Tensor, attention_mask: torch.Tensor, pooling: str) -> torch.Tensor:
+    if pooling == "cls":
+        return last_hidden[:, 0, :]
+    if pooling == "mean":
+        return mean_pool(last_hidden, attention_mask)
+    if pooling == "max":
+        expanded_mask = attention_mask.unsqueeze(-1).bool()
+        masked = last_hidden.masked_fill(~expanded_mask, torch.finfo(last_hidden.dtype).min)
+        return masked.max(dim=1).values
+    raise ValueError("pooling must be one of: 'mean', 'max', 'cls'")
+
 
 
 @torch.no_grad()
@@ -138,7 +233,13 @@ def _encode_unique_reports(
     pooling: str,
     device: str,
     use_safetensors: bool,
+    chunk_long_reports: bool,
+    chunk_stride: int,
+    chunk_aggregation: str,
 ) -> Tuple[np.ndarray, Dict[str, float]]:
+    # Defensive normalization before tokenization to reduce avoidable token waste.
+    reports = [normalize_report(r if r is not None else "") for r in reports]
+
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     try:
         model = AutoModel.from_pretrained(model_name, use_safetensors=use_safetensors)
@@ -157,51 +258,111 @@ def _encode_unique_reports(
     token_counts = []
     raw_token_counts = []
     num_truncated_reports = 0
-    for i in range(0, len(reports), bs):
-        chunk = reports[i : i + bs]
+    num_chunked_reports = 0
+    num_long_reports = 0
+    chunk_counts_per_report = []
 
-        # Raw lengths (without truncation) to estimate truncation statistics.
-        raw_tok = tokenizer(
-            chunk,
-            padding=False,
-            truncation=False,
-            add_special_tokens=True,
-        )
-        raw_chunk_counts = [len(ids) for ids in raw_tok["input_ids"]]
-        raw_token_counts.extend(raw_chunk_counts)
+    if (not chunk_long_reports):
+        for i in range(0, len(reports), bs):
+            chunk = reports[i : i + bs]
 
-        tok = tokenizer(
-            chunk,
-            padding=True,
-            truncation=True,
-            max_length=max_length,
-            return_tensors="pt",
-        )
-        tok = {k: v.to(device) for k, v in tok.items()}
-        chunk_token_counts = tok["attention_mask"].sum(dim=1).detach().cpu().numpy().astype(np.int32)
-        token_counts.extend(chunk_token_counts.tolist())
-        num_truncated_reports += int(np.sum(np.array(raw_chunk_counts) > max_length))
+            # Raw lengths (without truncation) to estimate truncation statistics.
+            raw_tok = tokenizer(
+                chunk,
+                padding=False,
+                truncation=False,
+                add_special_tokens=True,
+            )
+            raw_chunk_counts = [len(ids) for ids in raw_tok["input_ids"]]
+            raw_token_counts.extend(raw_chunk_counts)
 
-        out = model(**tok)
-        last_hidden = out.last_hidden_state  # [b, L, H]
+            tok = tokenizer(
+                chunk,
+                padding=True,
+                truncation=True,
+                max_length=max_length,
+                return_tensors="pt",
+            )
+            tok = {k: v.to(device) for k, v in tok.items()}
+            chunk_token_counts = tok["attention_mask"].sum(dim=1).detach().cpu().numpy().astype(np.int32)
+            token_counts.extend(chunk_token_counts.tolist())
+            num_truncated_reports += int(np.sum(np.array(raw_chunk_counts) > max_length))
+            chunk_counts_per_report.extend([1] * len(chunk))
 
-        if pooling == "cls":
-            pooled = last_hidden[:, 0, :]
-        elif pooling == "mean":
-            pooled = mean_pool(last_hidden, tok["attention_mask"])
-        elif pooling == "max":
-            expanded_mask = tok["attention_mask"].unsqueeze(-1).bool()
-            masked = last_hidden.masked_fill(~expanded_mask, torch.finfo(last_hidden.dtype).min)
-            pooled = masked.max(dim=1).values
-        else:
-            raise ValueError("pooling must be one of: 'mean', 'max', 'cls'")
+            out = model(**tok)
+            last_hidden = out.last_hidden_state  # [b, L, H]
+            pooled = _pool_hidden_states(last_hidden, tok["attention_mask"], pooling)
 
-        all_emb.append(pooled.detach().cpu().numpy().astype(np.float32))
+            all_emb.append(pooled.detach().cpu().numpy().astype(np.float32))
+    else:
+        if chunk_stride >= max_length:
+            raise ValueError("--chunk_stride must be smaller than --max_len when --chunk_long_reports is enabled.")
+
+        for report in reports:
+            raw_tok = tokenizer(
+                report,
+                padding=False,
+                truncation=False,
+                add_special_tokens=True,
+            )
+            raw_count = len(raw_tok["input_ids"])
+            raw_token_counts.append(raw_count)
+
+            if raw_count <= max_length:
+                tok = tokenizer(
+                    report,
+                    padding=True,
+                    truncation=True,
+                    max_length=max_length,
+                    return_tensors="pt",
+                )
+                tok = {k: v.to(device) for k, v in tok.items()}
+
+                report_token_count = int(tok["attention_mask"].sum().item())
+                token_counts.append(report_token_count)
+                chunk_counts_per_report.append(1)
+
+                out = model(**tok)
+                pooled = _pool_hidden_states(out.last_hidden_state, tok["attention_mask"], pooling)
+                all_emb.append(pooled.detach().cpu().numpy().astype(np.float32))
+                continue
+
+            num_long_reports += 1
+            num_chunked_reports += 1
+
+            tok = tokenizer(
+                report,
+                truncation=True,
+                max_length=max_length,
+                stride=chunk_stride,
+                padding="max_length",
+                return_overflowing_tokens=True,
+                return_tensors="pt",
+            )
+            report_num_chunks = int(tok["input_ids"].shape[0])
+            chunk_counts_per_report.append(report_num_chunks)
+
+            chunk_token_counts = tok["attention_mask"].sum(dim=1)
+            token_counts.append(int(chunk_token_counts.sum().item()))
+
+            tok = {k: v.to(device) for k, v in tok.items() if k in ("input_ids", "attention_mask", "token_type_ids")}
+            out = model(**tok)
+            pooled_chunks = _pool_hidden_states(out.last_hidden_state, tok["attention_mask"], pooling)
+
+            if chunk_aggregation == "mean":
+                pooled = pooled_chunks.mean(dim=0, keepdim=True)
+            elif chunk_aggregation == "max":
+                pooled = pooled_chunks.max(dim=0, keepdim=True).values
+            else:
+                raise ValueError("chunk_aggregation must be one of: 'mean', 'max'")
+
+            all_emb.append(pooled.detach().cpu().numpy().astype(np.float32))
 
     reports_emb = np.concatenate(all_emb, axis=0)
 
     token_counts_np = np.asarray(token_counts, dtype=np.int32)
     raw_token_counts_np = np.asarray(raw_token_counts, dtype=np.int32)
+    chunk_counts_np = np.asarray(chunk_counts_per_report, dtype=np.int32)
     token_stats = {
         "avg_num_tokens": float(np.mean(token_counts_np)) if token_counts_np.size > 0 else 0.0,
         "median_num_tokens": float(np.median(token_counts_np)) if token_counts_np.size > 0 else 0.0,
@@ -214,6 +375,16 @@ def _encode_unique_reports(
         "pct_truncated_reports": (
             float(100.0 * num_truncated_reports / len(reports)) if len(reports) > 0 else 0.0
         ),
+        "chunk_long_reports": bool(chunk_long_reports),
+        "chunk_stride": int(chunk_stride) if chunk_long_reports else 0,
+        "chunk_aggregation": chunk_aggregation if chunk_long_reports else None,
+        "num_long_reports": int(num_long_reports),
+        "num_chunked_reports": int(num_chunked_reports),
+        "avg_num_chunks_per_report": float(np.mean(chunk_counts_np)) if chunk_counts_np.size > 0 else 0.0,
+        "max_num_chunks_in_report": int(np.max(chunk_counts_np)) if chunk_counts_np.size > 0 else 0,
+        "p90_raw_num_tokens": float(np.percentile(raw_token_counts_np, 90)) if raw_token_counts_np.size > 0 else 0.0,
+        "p95_raw_num_tokens": float(np.percentile(raw_token_counts_np, 95)) if raw_token_counts_np.size > 0 else 0.0,
+        "p99_raw_num_tokens": float(np.percentile(raw_token_counts_np, 99)) if raw_token_counts_np.size > 0 else 0.0,
     }
 
     return reports_emb, token_stats
@@ -249,7 +420,7 @@ def _run_brats3d_extraction(args: argparse.Namespace, config: Config) -> None:
         if txt is None:
             missing_reports_count += 1
             continue
-        txt = txt.strip()
+        txt = normalize_report(txt)
         if not txt:
             empty_reports_count += 1
             continue
@@ -274,6 +445,9 @@ def _run_brats3d_extraction(args: argparse.Namespace, config: Config) -> None:
         pooling=args.pooling,
         device="cuda" if torch.cuda.is_available() else "cpu",
         use_safetensors=not args.no_safetensors,
+        chunk_long_reports=args.chunk_long_reports,
+        chunk_stride=args.chunk_stride,
+        chunk_aggregation=args.chunk_aggregation,
     )
 
     words_per_report = [len(r.split()) for r in unique_reports]
