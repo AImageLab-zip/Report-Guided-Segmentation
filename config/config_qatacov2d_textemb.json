@@ -1,12 +1,12 @@
 {
-    "name": "QaTaCOV_textft_64-5_SGD_l0.1-S3-V2-GM1-ClinicalBERT",
+    "name": "QaTaCOV_textft_64-5_SGD_l0.1-S3-V2-GM1-BioBERT_whitened76_nl",
     "n_gpu": 1,
 
     "dataset": {
         "name": "QaTaCovTextEmb",
         "path": "/leonardo_work/IscrC_narc2/reports_project/QaTa-COV19/QaTa-COV19-v2_preprocessed_gt",
         "split_file": "/leonardo_work/IscrC_narc2/reports_project/QaTa-COV19/QaTa-COV19-v2_preprocessed_gt/qatacov_split3.xlsx",
-        "text_emb_dir": "/leonardo_work/IscrC_narc2/reports_project/QaTa-COV19/Text_Embeddings/ClinicalBERT",
+        "text_emb_dir": "/leonardo_work/IscrC_narc2/reports_project/QaTa-COV19/Text_Embeddings/BioBERT/whitening/biobert_embeddings_whitened/k768/",
         "batch_size": 64,
         "image_size": [224, 224],
         "transforms": "config/qatacov2d_transforms.json"
@@ -41,8 +41,8 @@
 
         "sigloss_kwargs": {
             "bias_init": 0.0,
-            "learnable_temperature": true,
-            "learnable_bias": true,
+            "learnable_temperature": false,
+            "learnable_bias": false,
             "mode": 2
         }
     },
