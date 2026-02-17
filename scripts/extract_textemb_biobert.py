@@ -76,13 +76,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max_len",
         type=int,
-        default=512,
-        help="Maximum token length for text embeddings (BioBERT supports up to 512).",
+        default=8192,
+        help="Maximum token length for text embeddings. BioClinicalModernBERT supports up to 8192.",
     )
     parser.add_argument(
         "--no_safetensors",
         action="store_true",
-        help="Disable loading Hugging Face models from safetensors weights.",
+        help=(
+            "Disable loading Hugging Face models from safetensors weights. "
+            "NOTE: ModernBERT-based models are distributed as safetensors only — "
+            "do not use this flag with neuml/bioclinical-modernbert-base or similar."
+        ),
     )
     parser.add_argument(
         "--overwrite",
@@ -137,7 +141,7 @@ def _load_brats_case_ids(dataset_root: str, split_file: str) -> List[str]:
     return ordered_ids
 
 
-def _load_brats_reports_map(reports_path: str) -> Dict[str, str]:
+def _load_brats_reports_map(reports_path: str, mode: str) -> Dict[str, str]:
     def _text_from_json_obj(obj: Any) -> str:
         if isinstance(obj, str):
             return obj
@@ -156,8 +160,9 @@ def _load_brats_reports_map(reports_path: str) -> Dict[str, str]:
             with open(txt_path, "r", encoding="utf-8", errors="ignore") as f:
                 mapping[case_id] = f.read()
 
-        # New nested format: <root>/<case_id>/eng.txt or eng.json
         root = Path(reports_path)
+
+        # New nested format: <root>/<case_id>/eng.txt or eng.json
         for eng_path in root.rglob("eng.txt"):
             if not eng_path.is_file():
                 continue
@@ -174,6 +179,14 @@ def _load_brats_reports_map(reports_path: str) -> Dict[str, str]:
             text = _text_from_json_obj(payload)
             if text:
                 mapping[case_id] = text
+
+        # Mode-specific format: <root>/<case_id>/<mode>.txt
+        for report_path in root.rglob(f"{mode}.txt"):
+            if not report_path.is_file():
+                continue
+            case_id = report_path.parent.name
+            with open(report_path, "r", encoding="utf-8", errors="ignore") as f:
+                mapping[case_id] = f.read()
 
         # Optional flat JSON-per-case support: <case_id>.json
         for json_path in glob(os.path.join(reports_path, "*.json")):
@@ -224,6 +237,22 @@ def _pool_hidden_states(last_hidden: torch.Tensor, attention_mask: torch.Tensor,
     raise ValueError("pooling must be one of: 'mean', 'max', 'cls'")
 
 
+# Keys that are universally supported by all AutoModel encoder variants.
+# ModernBERT does not use token_type_ids — filtering here makes the
+# forward pass compatible with both BERT-family and ModernBERT-family models.
+_SUPPORTED_FORWARD_KEYS = frozenset({"input_ids", "attention_mask", "token_type_ids"})
+
+
+def _filter_model_inputs(tok: Dict[str, torch.Tensor], model: torch.nn.Module) -> Dict[str, torch.Tensor]:
+    """
+    Return only the keys from `tok` that the model's forward() actually accepts.
+    This makes the encoding loop compatible with both BERT-family models
+    (which use token_type_ids) and ModernBERT-family models (which do not).
+    """
+    import inspect
+    accepted = set(inspect.signature(model.forward).parameters.keys())
+    return {k: v for k, v in tok.items() if k in accepted and k in _SUPPORTED_FORWARD_KEYS}
+
 
 @torch.no_grad()
 def _encode_unique_reports(
@@ -262,7 +291,7 @@ def _encode_unique_reports(
     num_long_reports = 0
     chunk_counts_per_report = []
 
-    if (not chunk_long_reports):
+    if not chunk_long_reports:
         for i in range(0, len(reports), bs):
             chunk = reports[i : i + bs]
 
@@ -283,7 +312,15 @@ def _encode_unique_reports(
                 max_length=max_length,
                 return_tensors="pt",
             )
+            # Strip keys unsupported by the model (e.g. token_type_ids is absent
+            # in ModernBERT), then hard-clamp sequence length to max_length.
+            # The clamp is a safety net: padding=True pads to the longest sequence
+            # in the batch, which can exceed max_length in BERT tokenizer edge cases,
+            # causing a RuntimeError when absolute position embeddings are looked up.
+            tok = {k: v for k, v in _filter_model_inputs(tok, model).items()}
+            tok = {k: (v[:, :max_length] if v.dim() == 2 else v) for k, v in tok.items()}
             tok = {k: v.to(device) for k, v in tok.items()}
+
             chunk_token_counts = tok["attention_mask"].sum(dim=1).detach().cpu().numpy().astype(np.int32)
             token_counts.extend(chunk_token_counts.tolist())
             num_truncated_reports += int(np.sum(np.array(raw_chunk_counts) > max_length))
@@ -316,6 +353,9 @@ def _encode_unique_reports(
                     max_length=max_length,
                     return_tensors="pt",
                 )
+                # Strip unsupported keys + hard-clamp (same defensive pattern as batch path).
+                tok = {k: v for k, v in _filter_model_inputs(tok, model).items()}
+                tok = {k: (v[:, :max_length] if v.dim() == 2 else v) for k, v in tok.items()}
                 tok = {k: v.to(device) for k, v in tok.items()}
 
                 report_token_count = int(tok["attention_mask"].sum().item())
@@ -345,7 +385,9 @@ def _encode_unique_reports(
             chunk_token_counts = tok["attention_mask"].sum(dim=1)
             token_counts.append(int(chunk_token_counts.sum().item()))
 
-            tok = {k: v.to(device) for k, v in tok.items() if k in ("input_ids", "attention_mask", "token_type_ids")}
+            # Strip unsupported keys (chunking path already pads to max_length so
+            # no length clamp needed, but filter is still required for ModernBERT).
+            tok = {k: v.to(device) for k, v in _filter_model_inputs(tok, model).items()}
             out = model(**tok)
             pooled_chunks = _pool_hidden_states(out.last_hidden_state, tok["attention_mask"], pooling)
 
@@ -392,6 +434,9 @@ def _encode_unique_reports(
 
 def _run_brats3d_extraction(args: argparse.Namespace, config: Config) -> None:
     dataset_root = config.dataset["path"]
+    # Each report_mode produces a separate subfolder of embeddings under report_folder.
+    report_modes = ["clinical", "generated", "concat"]
+
     split_file = args.split_file or config.dataset.get("split_file")
     if not split_file:
         raise ValueError("BraTS mode requires a split file (pass --split_file or set config.dataset.split_file).")
@@ -403,101 +448,110 @@ def _run_brats3d_extraction(args: argparse.Namespace, config: Config) -> None:
         )
 
     report_folder = args.report_folder or config.dataset.get("report_folder", "rep_RG")
-    output_dir = os.path.join(dataset_root, report_folder)
-    os.makedirs(output_dir, exist_ok=True)
+    base_output_dir = os.path.join(dataset_root, report_folder)
 
     case_ids = _load_brats_case_ids(dataset_root, split_file)
-    reports_map = _load_brats_reports_map(reports_path)
 
-    unique_reports: List[str] = []
-    report_hash_to_idx: Dict[str, int] = {}
-    case_to_report_idx: Dict[str, int] = {}
-    missing_reports_count = 0
-    empty_reports_count = 0
+    for report_mode in report_modes:
+        print(f"\n[INFO] Processing report_mode='{report_mode}'")
 
-    for case_id in case_ids:
-        txt = reports_map.get(case_id)
-        if txt is None:
-            missing_reports_count += 1
+        # Reset all per-mode state so modes don't bleed into each other.
+        unique_reports: List[str] = []
+        report_hash_to_idx: Dict[str, int] = {}
+        case_to_report_idx: Dict[str, int] = {}
+        missing_reports_count = 0
+        empty_reports_count = 0
+
+        reports_map = _load_brats_reports_map(reports_path, report_mode)
+
+        for case_id in case_ids:
+            txt = reports_map.get(case_id)
+            if txt is None:
+                missing_reports_count += 1
+                continue
+            txt = normalize_report(txt)
+            if not txt:
+                empty_reports_count += 1
+                continue
+
+            h = hash_report(txt)
+            if h not in report_hash_to_idx:
+                report_hash_to_idx[h] = len(unique_reports)
+                unique_reports.append(txt)
+            case_to_report_idx[case_id] = report_hash_to_idx[h]
+
+        if len(unique_reports) == 0:
+            print(f"[WARN] No valid reports found for mode='{report_mode}', skipping.")
             continue
-        txt = normalize_report(txt)
-        if not txt:
-            empty_reports_count += 1
-            continue
 
-        h = hash_report(txt)
-        if h not in report_hash_to_idx:
-            report_hash_to_idx[h] = len(unique_reports)
-            unique_reports.append(txt)
-        case_to_report_idx[case_id] = report_hash_to_idx[h]
+        print(f"[INFO] BraTS cases in split (with images): {len(case_ids)}")
+        print(f"[INFO] BraTS cases with available non-empty report: {len(case_to_report_idx)}")
+        print(f"[INFO] Unique reports to encode: {len(unique_reports)}")
 
-    if len(unique_reports) == 0:
-        raise ValueError("No valid BraTS reports found for selected split IDs.")
+        reports_emb, token_stats = _encode_unique_reports(
+            reports=unique_reports,
+            model_name=args.model_name,
+            max_length=args.max_len,
+            pooling=args.pooling,
+            device="cuda" if torch.cuda.is_available() else "cpu",
+            use_safetensors=not args.no_safetensors,
+            chunk_long_reports=args.chunk_long_reports,
+            chunk_stride=args.chunk_stride,
+            chunk_aggregation=args.chunk_aggregation,
+        )
 
-    print(f"[INFO] BraTS cases in split (with images): {len(case_ids)}")
-    print(f"[INFO] BraTS cases with available non-empty report: {len(case_to_report_idx)}")
-    print(f"[INFO] Unique reports to encode: {len(unique_reports)}")
+        words_per_report = [len(r.split()) for r in unique_reports]
+        chars_per_report = [len(r) for r in unique_reports]
 
-    reports_emb, token_stats = _encode_unique_reports(
-        reports=unique_reports,
-        model_name=args.model_name,
-        max_length=args.max_len,
-        pooling=args.pooling,
-        device="cuda" if torch.cuda.is_available() else "cpu",
-        use_safetensors=not args.no_safetensors,
-        chunk_long_reports=args.chunk_long_reports,
-        chunk_stride=args.chunk_stride,
-        chunk_aggregation=args.chunk_aggregation,
-    )
+        # Output goes into base_output_dir/<report_mode>/ so modes don't overwrite each other.
+        output_dir = os.path.join(base_output_dir, report_mode)
+        os.makedirs(output_dir, exist_ok=True)
 
-    words_per_report = [len(r.split()) for r in unique_reports]
-    chars_per_report = [len(r) for r in unique_reports]
+        written = 0
+        skipped_existing = 0
+        for case_id, emb_idx in case_to_report_idx.items():
+            out_path = os.path.join(output_dir, f"{case_id}.npz")
+            if (not args.overwrite) and os.path.exists(out_path):
+                skipped_existing += 1
+                continue
+            np.savez_compressed(out_path, embedding=reports_emb[emb_idx])
+            written += 1
 
-    written = 0
-    skipped_existing = 0
-    for case_id, emb_idx in case_to_report_idx.items():
-        out_path = os.path.join(output_dir, f"{case_id}.npz")
-        if (not args.overwrite) and os.path.exists(out_path):
-            skipped_existing += 1
-            continue
-        np.savez_compressed(out_path, embedding=reports_emb[emb_idx])
-        written += 1
+        meta = {
+            "model_name": args.model_name,
+            "report_mode": report_mode,
+            "max_length": int(args.max_len),
+            "pooling": args.pooling,
+            "embedding_dim": int(reports_emb.shape[1]),
+            "num_cases_in_split": int(len(case_ids)),
+            "num_cases_with_report": int(len(case_to_report_idx)),
+            "num_cases_missing_report": int(missing_reports_count),
+            "num_cases_empty_report": int(empty_reports_count),
+            "num_unique_reports": int(len(unique_reports)),
+            "avg_num_words": float(np.mean(words_per_report)) if words_per_report else 0.0,
+            "avg_num_characters": float(np.mean(chars_per_report)) if chars_per_report else 0.0,
+            "median_num_characters": float(np.median(chars_per_report)) if chars_per_report else 0.0,
+            "output_dir": output_dir,
+            "report_folder": report_folder,
+            "report_hash_to_idx": report_hash_to_idx,
+            **token_stats,
+        }
 
-    meta = {
-        "model_name": args.model_name,
-        "max_length": int(args.max_len),
-        "pooling": args.pooling,
-        "embedding_dim": int(reports_emb.shape[1]),
-        "num_cases_in_split": int(len(case_ids)),
-        "num_cases_with_report": int(len(case_to_report_idx)),
-        "num_cases_missing_report": int(missing_reports_count),
-        "num_cases_empty_report": int(empty_reports_count),
-        "num_unique_reports": int(len(unique_reports)),
-        "avg_num_words": float(np.mean(words_per_report)) if words_per_report else 0.0,
-        "avg_num_characters": float(np.mean(chars_per_report)) if chars_per_report else 0.0,
-        "median_num_characters": float(np.median(chars_per_report)) if chars_per_report else 0.0,
-        "output_dir": output_dir,
-        "report_folder": report_folder,
-        "report_hash_to_idx": report_hash_to_idx,
-        **token_stats,
-    }
+        with open(os.path.join(output_dir, "avg_num_tokens.txt"), "w") as f:
+            f.write(str(token_stats["avg_num_tokens"]))
+        with open(os.path.join(output_dir, "total_num_tokens.txt"), "w") as f:
+            f.write(str(token_stats["total_num_tokens"]))
+        with open(os.path.join(output_dir, "token_stats.json"), "w") as f:
+            json.dump(token_stats, f)
+        with open(os.path.join(output_dir, "reports_meta.json"), "w") as f:
+            json.dump(meta, f)
+        with open(os.path.join(output_dir, "case_to_report_idx.json"), "w") as f:
+            json.dump(case_to_report_idx, f)
 
-    with open(os.path.join(output_dir, "avg_num_tokens.txt"), "w") as f:
-        f.write(str(token_stats["avg_num_tokens"]))
-    with open(os.path.join(output_dir, "total_num_tokens.txt"), "w") as f:
-        f.write(str(token_stats["total_num_tokens"]))
-    with open(os.path.join(output_dir, "token_stats.json"), "w") as f:
-        json.dump(token_stats, f)
-
-    with open(os.path.join(output_dir, "reports_meta.json"), "w") as f:
-        json.dump(meta, f)
-    with open(os.path.join(output_dir, "case_to_report_idx.json"), "w") as f:
-        json.dump(case_to_report_idx, f)
-
-    print(
-        "[DONE] BraTS embeddings saved. "
-        f"written={written}, skipped_existing={skipped_existing}, output_dir={output_dir}"
-    )
+        print(
+            f"[DONE] mode='{report_mode}' embeddings saved. "
+            f"written={written}, skipped_existing={skipped_existing}, output_dir={output_dir}"
+        )
 
 
 def _run_qatacov_extraction(args: argparse.Namespace, config: Config) -> None:
