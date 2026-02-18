@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 import numpy as np
 import torch
-from torch.cuda.amp import autocast
+from torch.amp import autocast
 from torchvision.utils import make_grid
 from base.base_trainer import BaseTrainer
 from tqdm import tqdm
@@ -16,6 +16,7 @@ from utils.util import _onehot_enc
 from datasets.DatasetFactory import DatasetFactory
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
+from monai.networks.utils import one_hot
 
 class Trainer_3DText(BaseTrainer):
     """
@@ -47,37 +48,39 @@ class Trainer_3DText(BaseTrainer):
             if use_report and 'report' in sample:
                 report = sample['report'].to(self.device)
 
-            with autocast(enabled=self.use_amp, dtype=self.amp_dtype):
+            with autocast(device_type='cuda', enabled=self.use_amp, dtype=self.amp_dtype):
                 if report is not None:
                     prediction, z_img, z_txt = self.model(image, report)
                     #if isinstance(prediction, (tuple, list)):
                         #prediction = prediction[0]
 
-                    loss = self.loss(prediction, label, z_img, z_txt, self.model.module.t_prime, self.model.module.bias)
+                    total_loss, loss_dict = self.loss(prediction, label, z_img, z_txt, self.model.module.t_prime, self.model.module.bias, current_epoch=epoch, metric_manager=self.train_metrics)
                 else:
                     prediction = self.model(image)
-                    loss = self.loss(prediction, label)
+                    total_loss, loss_dict = self.loss(prediction, label, current_epoch=epoch, metric_manager=self.train_metrics)
 
             self.optimizer.zero_grad(set_to_none=True)
             if self.use_scaler:
-                self.scaler.scale(loss).backward()
+                self.scaler.scale(total_loss).backward()
                 self.scaler.unscale_(self.optimizer)
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 2.) # better 5 with SGD, 1 with Adam
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
             else:
-                loss.backward()
+                total_loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 2.) # better 5 with SGD, 1 with Adam
                 self.optimizer.step()
 
             self.train_metrics.update_metrics(prediction, label)
-            return loss
+            return total_loss
 
         report_every_k = 2
         reports_iter = None
         if hasattr(self, 'train_reports_loader') and self.train_reports_loader is not None:
             if len(self.train_reports_loader) > 0:
                 reports_iter = itertools.cycle(self.train_reports_loader)
+        if(dist.get_rank() == 0):
+            print(f"Lambda_sig: {self.loss.get_current_lambda(epoch)}")
 
         for idx, sample in iterator:
             loss = _train_step(sample, use_report=False)
@@ -137,6 +140,9 @@ class Trainer_3DText(BaseTrainer):
 
             prediction = pred_aggregator.get_output_tensor().unsqueeze(0).cpu()
             label = label_aggregator.get_output_tensor().unsqueeze(0).int().cpu()
+            if phase == 'val':
+                label_proc = label if label.dtype != torch.long and label.shape[1] > 1 else one_hot(label, num_classes=self.num_classes).float()
+                total_loss, loss_dict = self.loss(prediction, label_proc, current_epoch=epoch, metric_manager=self.val_metrics)
 
             # Pass raw predictions (logits) to metrics - they handle conversion as needed
             metrics_manager.update_metrics(prediction, label)

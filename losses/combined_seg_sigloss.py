@@ -11,12 +11,16 @@ class CombinedSegSigLoss(nn.Module):
 
     - seg_loss_name: must exist in monai.losses
     - If img_emb/txt_emb are not provided, returns only seg_loss (baseline-compatible).
+    - Supports linearly increasing lambda_sig from lambda_sig_initial to lambda_sig_final over epochs
     """
     def __init__(
         self,
         seg_loss_name: str = "DiceCELoss",
         seg_loss_kwargs: dict = None,
         lambda_sig: float = 0.1,
+        lambda_sig_initial: float = None,
+        lambda_sig_final: float = None,
+        lambda_warmup_epochs: int = None,
         sigloss_kwargs: dict = None
     ):
         super().__init__()
@@ -36,14 +40,71 @@ class CombinedSegSigLoss(nn.Module):
             self.sig_loss = DistributedSigLoss(**sigloss_kwargs)
         else:
             self.sig_loss = SigLoss(**sigloss_kwargs)
-        self.lambda_sig = float(lambda_sig)
+        
+        # Linear warmup support
+        if lambda_sig_initial is not None and lambda_sig_final is not None:
+            self.lambda_sig_initial = float(lambda_sig_initial)
+            self.lambda_sig_final = float(lambda_sig_final)
+            self.lambda_warmup_epochs = lambda_warmup_epochs or 1
+            self.use_warmup = True
+        else:
+            self.lambda_sig = float(lambda_sig)
+            self.use_warmup = False
+    
+    def get_current_lambda(self, current_epoch: int = None):
+        """Calculate current lambda_sig based on linear warmup schedule over epochs."""
+        if not self.use_warmup:
+            return self.lambda_sig
+        
+        if current_epoch is None:
+            return self.lambda_sig_final
+        
+        if current_epoch >= self.lambda_warmup_epochs:
+            return self.lambda_sig_final
+        
+        # Linear interpolation
+        progress = current_epoch / self.lambda_warmup_epochs
+        return self.lambda_sig_initial + (self.lambda_sig_final - self.lambda_sig_initial) * progress
 
-    def forward(self, prediction: torch.Tensor, target: torch.Tensor, img_emb=None, txt_emb=None, t_prime=None, bias=None):
+    def forward(self, prediction: torch.Tensor, target: torch.Tensor, img_emb=None, txt_emb=None, t_prime=None, bias=None, current_epoch=None, metric_manager=None):
         seg = self.seg_loss(prediction, target)
 
+        # Get current lambda (with warmup if enabled)
+        lambda_current = self.get_current_lambda(current_epoch)
+
         # If embeddings are missing, behave like baseline loss
-        if img_emb is None or txt_emb is None or self.lambda_sig == 0.0:
-            return seg
+        if img_emb is None or txt_emb is None or lambda_current == 0.0:
+            loss_dict = {
+                'seg_loss': seg,
+                'sig_loss': torch.tensor(0.0, device=seg.device),
+                'lambda_sig': lambda_current
+            }
+            #ADD TO WANDB, TO BE REMOVED
+            if metric_manager is not None:
+                metric_manager.metric_sums['DiceFocalLoss'] = metric_manager.metric_sums.get('DiceFocalLoss', 0.0) + seg.item()
+                metric_manager.metric_counts['DiceFocalLoss'] = metric_manager.metric_counts.get('DiceFocalLoss', 0) + 1
+                metric_manager.metric_sums['CombinedSegSigLoss'] = metric_manager.metric_sums.get('CombinedSegSigLoss', 0.0) + seg.item()
+                metric_manager.metric_counts['CombinedSegSigLoss'] = metric_manager.metric_counts.get('CombinedSegSigLoss', 0) + 1
+        
+            return seg, loss_dict
 
         sig = self.sig_loss(img_emb, txt_emb, t_prime, bias)
-        return seg + self.lambda_sig * sig
+        total_loss = seg + lambda_current * sig
+        
+        loss_dict = {
+            'seg_loss': seg,
+            'sig_loss': sig,
+            'lambda_sig': lambda_current
+        }
+
+
+        #ADD TO WANDB, TO BE REMOVED
+        if metric_manager is not None:
+            metric_manager.metric_sums['Sigmoid_loss'] = metric_manager.metric_sums.get('Sigmoid_loss', 0.0) + sig.item()
+            metric_manager.metric_counts['Sigmoid_loss'] = metric_manager.metric_counts.get('Sigmoid_loss', 0) + 1
+            metric_manager.metric_sums['DiceFocalLoss'] = metric_manager.metric_sums.get('DiceFocalLoss', 0.0) + seg.item()
+            metric_manager.metric_counts['DiceFocalLoss'] = metric_manager.metric_counts.get('DiceFocalLoss', 0) + 1
+            metric_manager.metric_sums['CombinedSegSigLoss'] = metric_manager.metric_sums.get('CombinedSegSigLoss', 0.0) + total_loss.item()
+            metric_manager.metric_counts['CombinedSegSigLoss'] = metric_manager.metric_counts.get('CombinedSegSigLoss', 0) + 1
+        
+        return total_loss, loss_dict

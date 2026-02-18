@@ -91,7 +91,7 @@ class UNet2D(BaseModel):
 
         self.bottleneck_channels = self.size * (2 ** (self.depth + 1))
 
-    def forward(self, x, return_bottleneck: bool = False):
+    def forward(self, x, return_emb: bool = False):
         #print(self.encoder)
         #print(self.bottleneck)
         #print(self.decoder)
@@ -123,9 +123,10 @@ class UNet2D(BaseModel):
         if pre_padding:
             out = unpad_2d(out, pads)
 
-        if return_bottleneck:
+        if return_emb:
             return out, bottleneck
-        return out
+        else:
+            return out
 
 ''' Example usage
 model = UNet2D(3,4)

@@ -1,5 +1,5 @@
 import torch
-from torch.cuda.amp import GradScaler
+from torch.amp import GradScaler
 from abc import abstractmethod
 from numpy import inf
 import torch.distributed as dist
@@ -81,7 +81,7 @@ class BaseTrainer:
         self.scaler = GradScaler(enabled=self.use_scaler)
 
         # Wrap model with DataParallel if n_gpu > 1
-        self.model = DDP(self.model.to(self.device),find_unused_parameters=True)
+        self.model = DDP(self.model.to(self.device), find_unused_parameters=True)
     
         self.optimizer, self.lr_scheduler = OptimizerFactory.create_instance(self.model, self.config)
 

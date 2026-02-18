@@ -43,7 +43,10 @@ class UNet3DText(UNet3D):
         self.t_prime = nn.Parameter(t_init)
         self.bias = nn.Parameter(torch.tensor(bias_init, dtype=torch.float32))
 
-    def forward(self, x, text_emb=None):
+    def forward(self, x, text_emb=None, return_emb: bool = False):
+        # Handle both parameter names for backward compatibility
+        return_features = return_emb 
+        
         feat_list = []
 
         # Padding is needed if the size of the input is not divisible 'depth' times by 2
@@ -75,9 +78,13 @@ class UNet3DText(UNet3D):
         if pre_padding:
             out = unpad_3d(out, pads)
 
-        if text_emb is None:
+        if text_emb is None and not return_features:
             return out
-        else:
+        elif text_emb is None and return_features:
+            return out, bottleneck_feat
+        elif text_emb is not None and not return_features:
             z_img, z_txt = self.guidance_head(bottleneck_feat, text_emb)
             return out, z_img, z_txt
-        
+        elif text_emb is not None and return_features:
+            z_img, z_txt = self.guidance_head(bottleneck_feat, text_emb)
+            return out, z_img, z_txt, bottleneck_feat

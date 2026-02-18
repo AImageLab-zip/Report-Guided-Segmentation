@@ -17,8 +17,10 @@ class BaseDataset:
         NUM_WORKERS = 4  # Set to a fixed number if the environment variable does not exist
 
     def __init__(self, config, root_folder, validation=True, train_transforms=None, test_transforms=None, **kwargs):
-        if dist.get_rank() == 0:
+        if dist.is_initialized() and dist.get_rank() == 0:
             print(f'Detected {self.NUM_WORKERS} cpus. rank{dist.get_rank()}')
+        elif not dist.is_initialized():
+            print(f'Detected {self.NUM_WORKERS} cpus')
         self.config = config
         self.validation = validation
         self.root_folder = root_folder
@@ -68,7 +70,7 @@ class BaseDataset:
             patch_size=self.config.dataset['patch_size']
         )
 
-        subjects_sampler = torch.utils.data.DistributedSampler(dataset, shuffle=shuffle)
+        subjects_sampler = torch.utils.data.DistributedSampler(dataset, shuffle=shuffle) if dist.is_initialized() else None
         queue = tio.Queue(
                 subjects_dataset=dataset,
                 max_length=self.config.dataset['queue_length'],
@@ -76,7 +78,7 @@ class BaseDataset:
                 sampler=sampler,
                 subject_sampler= subjects_sampler,
                 num_workers=self.NUM_WORKERS,
-                shuffle_subjects=False,
+                shuffle_subjects=shuffle if subjects_sampler is None else False,
                 shuffle_patches=True,
                 start_background=False,
         )
@@ -91,13 +93,13 @@ class BaseDataset:
 
     # return a SubjectsLoader (dataloader of TorchIO) which use entire volumes/image
     def _get_entire_loader(self, dataset: tio.SubjectsDataset, batch_size: int = 1,shuffle=False):
-        subjects_sampler = torch.utils.data.DistributedSampler(dataset, shuffle=shuffle)
+        subjects_sampler = torch.utils.data.DistributedSampler(dataset, shuffle=shuffle) if dist.is_initialized() else None
         loader = tio.SubjectsLoader(
             dataset,
             batch_size=batch_size,
             num_workers=self.NUM_WORKERS,
             pin_memory=True,
-            shuffle=False,
+            shuffle=shuffle if subjects_sampler is None else False,
             sampler=subjects_sampler
         )
         return loader

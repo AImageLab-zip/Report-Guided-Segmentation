@@ -59,6 +59,8 @@ class MetricsManager:
         Also appends the mean value of the metric if it is multiclass.
         """
         for metric_name, metric_func in self.metrics.items():
+            if metric_name.lower() == 'combinedsegsigloss':
+                continue
             if "loss" not in metric_name.lower():
                 # For metrics: convert to one-hot for comparison
                 if prediction.dtype in (torch.long, torch.int, torch.int32, torch.int64):

@@ -5,7 +5,7 @@
     "dataset": {
         "name": "BraTS3DText",
         "path": "/leonardo_work/IscrC_narc2/reports_project/BRATS2023_Training_nifti",
-        "report_folder": "report_RG_siglip",
+        "report_folder": "report_BraTS-Report_biobert",
         "patch_size": 128,
     
         "grid_overlap": 0,
@@ -32,7 +32,7 @@
         "num_classes": 4,
         "size": 16,
         "depth": 4,
-        "text_dim": 1152,
+        "text_dim": 768,
         "text_proj": false,
         "img_proj": true, 
         "bias_init": 0
@@ -44,6 +44,9 @@
             "include_background": false,
             "softmax": true
         },
+        "lambda_sig_initial": 0.05,
+        "lambda_sig_final": 0.5,
+        "lambda_warmup_epochs": 100,
         "lambda_sig": 0.1,
         "sigloss_kwargs": {"mode": 2}
     },

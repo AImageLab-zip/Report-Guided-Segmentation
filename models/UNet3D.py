@@ -90,7 +90,7 @@ class UNet3D(BaseModel):
         self.out_layer = nn.Conv3d(self.size * 2, self.out_channels, kernel_size=1, stride=1, padding=0)
     
 
-    def forward(self, x):
+    def forward(self, x, return_emb: bool = False):
         #print(self.encoder)
         #print(self.bottleneck)
         #print(self.decoder)
@@ -110,7 +110,8 @@ class UNet3D(BaseModel):
             out, feat = self.encoder[block](out)
             feat_list.append(feat)
 
-        out = self.bottleneck(out)
+        bottleneck = self.bottleneck(out)
+        out = bottleneck
 
         for block in self.decoder:
             out = self.decoder[block](torch.cat((out, feat_list[int(block)]), dim=1))
@@ -118,14 +119,12 @@ class UNet3D(BaseModel):
 
         out = self.out_layer(out)
 
-        # Ensure DDP tracks t_prime/bias in the forward graph
-        # (these parameters are used in the loss outside forward)
-        out = out + (self.t_prime * 0.0) + (self.bias * 0.0)
-
         if pre_padding:
             out = unpad_3d(out, pads)
-
-        return out
+        if return_emb:
+            return out, bottleneck
+        else:
+            return out
 
 '''model = UNet3D(3,4)
 #x = torch.rand(1, 3, 248, 244, 64)
