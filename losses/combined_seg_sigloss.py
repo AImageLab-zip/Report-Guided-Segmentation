@@ -21,6 +21,7 @@ class CombinedSegSigLoss(nn.Module):
         lambda_sig_initial: float = None,
         lambda_sig_final: float = None,
         lambda_warmup_epochs: int = None,
+        lambda_cooldown_epochs: int = None,
         sigloss_kwargs: dict = None
     ):
         super().__init__()
@@ -41,30 +42,45 @@ class CombinedSegSigLoss(nn.Module):
         else:
             self.sig_loss = SigLoss(**sigloss_kwargs)
         
-        # Linear warmup support
+        # Linear warmup and cooldown support
         if lambda_sig_initial is not None and lambda_sig_final is not None:
             self.lambda_sig_initial = float(lambda_sig_initial)
             self.lambda_sig_final = float(lambda_sig_final)
             self.lambda_warmup_epochs = lambda_warmup_epochs or 1
+            self.lambda_cooldown_epochs = lambda_cooldown_epochs or 1
             self.use_warmup = True
         else:
             self.lambda_sig = float(lambda_sig)
             self.use_warmup = False
     
     def get_current_lambda(self, current_epoch: int = None):
-        """Calculate current lambda_sig based on linear warmup schedule over epochs."""
+        """
+        Calculate current lambda_sig based on linear warmup and cooldown schedule.
+        Phase 1 (0 to warmup_epochs): linear increase from initial to final
+        Phase 2 (warmup_epochs to warmup_epochs + cooldown_epochs): linear decrease from final to 0
+        Phase 3 (after cooldown): stays at 0
+        """
         if not self.use_warmup:
             return self.lambda_sig
         
         if current_epoch is None:
             return self.lambda_sig_final
         
-        if current_epoch >= self.lambda_warmup_epochs:
-            return self.lambda_sig_final
+        # Phase 1: Warmup - linear increase
+        if current_epoch < self.lambda_warmup_epochs:
+            progress = current_epoch / self.lambda_warmup_epochs
+            return self.lambda_sig_initial + (self.lambda_sig_final - self.lambda_sig_initial) * progress
         
-        # Linear interpolation
-        progress = current_epoch / self.lambda_warmup_epochs
-        return self.lambda_sig_initial + (self.lambda_sig_final - self.lambda_sig_initial) * progress
+        # Phase 2: Cooldown - linear decrease to 0
+        cooldown_start = self.lambda_warmup_epochs
+        cooldown_end = self.lambda_warmup_epochs + self.lambda_cooldown_epochs
+        
+        if current_epoch < cooldown_end:
+            progress = (current_epoch - cooldown_start) / self.lambda_cooldown_epochs
+            return self.lambda_sig_final * (1.0 - progress)
+        
+        # Phase 3: After cooldown - stay at 0
+        return 0.0
 
     def forward(self, prediction: torch.Tensor, target: torch.Tensor, img_emb=None, txt_emb=None, t_prime=None, bias=None, current_epoch=None, metric_manager=None):
         seg = self.seg_loss(prediction, target)
