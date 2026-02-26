@@ -62,9 +62,26 @@ Brain-Segmentation/
 ├── scripts/                 # Utility scripts (e.g., text embeddings)
 │   └── extract_textemb_biobert.py
 │   └── preprocess_qatacov.py
-├── config.py               # Config file handler
-├── main.py                 # Training entry point
-└── requirements.txt        # Python dependencies
+├── report_generation/       # Code for report generation and evaluation
+│   ├── agreement
+│   │   ├── radfact.py
+│   │   ├── radfact-70b
+│   │   ├── run-auto-agreement.py
+│   │   └── run-radfact-agreement.py
+│   ├── autogen
+│   │   ├── fill_atlas.py
+│   │   ├── generate_atlas.py
+│   │   ├── generate_eloquent.py
+│   │   ├── generate_reports
+│   │   └── run_cc_segmentation.py
+│   ├── utils
+│   │   ├── data.py
+│   │   ├── geometries.py
+│   │   └── jsonify.py
+│   └── README.md
+├── config.py                # Config file handler
+├── main.py                  # Training entry point
+└── requirements.txt         # Python dependencies
 ```
 
 ## Installation
