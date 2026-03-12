@@ -27,7 +27,7 @@ Command-line arguments:
   --input-dir         Path to directory containing subject subfolders (BraTS2023 works straight out of the box).
   --output-dir        Path to output directory (created; if it exists, user is prompted to delete it).
   --t1-atlas-path     Path to the T1 atlas NIfTI file (intensity image).
-  --areas-atlas-path  Path to the labeled areas atlas NIfTI file (integer labels).
+  --areas-atlas-path  Path to the labeled areas atlas NIfTI file (integer labels). 
 """
 parser = argparse.ArgumentParser()
 parser.add_argument("--input-dir",type=Path)
@@ -52,8 +52,6 @@ print(f'Starting the iteration over {args.input_dir}')
 
 t1_atlas = ants.image_read(str(args.t1_atlas_path))
 complete_atlas = ants.image_read(str(args.areas_atlas_path))
-
-args = [(sub,args.output_dir) for sub in args.input_dir.iterdir()]
 
 atlas = ants.resample_image_to_target(
     image=complete_atlas,
