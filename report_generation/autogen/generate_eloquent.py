@@ -121,5 +121,5 @@ subjects = list(atlas_path.iterdir())
 with ThreadPoolExecutor(max_workers=4) as executor:
     futures = [executor.submit(process_subject, sub) for sub in subjects]
 
-    for _ in tqdm(as_completed(futures), total=len(futures)):
-        pass
+    for fut in tqdm(as_completed(futures), total=len(futures)):
+        fut.result()  # raises if process_subject failed
