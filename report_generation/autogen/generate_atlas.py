@@ -61,7 +61,6 @@ atlas = ants.resample_image_to_target(
 
 
 for sub in tqdm(list(args.input_dir.iterdir())):
-    t1_subj  = ants.image_read(str(sub/f'{sub.name}-t1n.nii.gz'))
 
     tx_dir = args.output_dir / sub.name / "transforms"
     tx_dir.mkdir(parents=True, exist_ok=True)
@@ -77,7 +76,7 @@ for sub in tqdm(list(args.input_dir.iterdir())):
     inv_transforms = reg["invtransforms"]      # subject->atlas
 
     # Saving the T1 for debugging and viewing
-    ants.image_write(t1_subj, str(args.output_dir / sub.name/ f"{sub.name}_t1n.nii.gz"))
+    ants.image_write(t1_subj, str(args.output_dir / sub.name/ f"{sub.name}-t1n.nii.gz"))
     atlas = ants.apply_transforms(
         fixed=t1_subj,
         moving=complete_atlas,
