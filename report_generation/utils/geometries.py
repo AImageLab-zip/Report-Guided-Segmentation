@@ -418,7 +418,7 @@ def get_affected(volume, labels, threshold):
         total_voxels = np.sum(labels == lbl)
         affected_voxels = np.sum((labels == lbl) & affected_mask)
 
-        if total_voxels * threshold <= affected_voxels:
+        if total_voxels * threshold < affected_voxels:
             valid_labels.append(int(lbl))
 
     return sorted(valid_labels)
