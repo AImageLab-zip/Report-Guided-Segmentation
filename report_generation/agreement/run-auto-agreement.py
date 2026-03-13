@@ -40,6 +40,7 @@ class Score:
 
 n_lesion_score = Score()
 origin_score = Score()
+side_score = Score()
 affected_tc_score = Score()
 affected_ed_score = Score()
 affected_eloq_score = Score()
@@ -78,9 +79,9 @@ for sub in sorted(clinician_path.iterdir()):
                     origin_score.FP +=1
 
                 if auto_data[i]['centers'][j]["origin_side"] == med_data[i]['centers'][j]["origin_side"]:
-                    origin_score.TP += 1
+                    side_score.TP += 1
                 else:
-                    origin_score.FP +=1
+                    side_score.FP +=1
 
                 if auto_data[i]['centers'][j]["origin_depth"] == med_data[i]['centers'][j]["origin_depth"]:
                     origin_score.TP += 1
@@ -131,6 +132,7 @@ for sub in sorted(clinician_path.iterdir()):
 
 print(f'Number of lesions accuracy: {n_lesion_score.accuracy():.04f}')
 print(f'Origin localization accuracy: {origin_score.accuracy():.04f}')
+print(f'Origin localization accuracy: {side_score.accuracy():.04f}')
 print(f'TC affected scores: prec --> {affected_tc_score.precision():.04f}, rec --> {affected_tc_score.recall():.04f}, '
       f'f1 --> {affected_tc_score.f1():.04f}, prev -->{affected_tc_score.prevalence()}',)
 print(f'TC eloquent scores: prec --> {affected_eloq_score.precision():.04f}, rec --> {affected_eloq_score.recall():.04f}, '

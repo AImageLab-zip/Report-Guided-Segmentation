@@ -330,7 +330,7 @@ class JsonDataset(torch.utils.data.Dataset):
         try:
             cc_path,atlas_path, eloquent_path = self.data_list[idx]
             cc_path = cc_path / f'{cc_path.name}-cc.nii.gz'
-            atlas_path = atlas_path / f'{atlas_path.name}-wl-complete-fill.nii.gz'
+            atlas_path = atlas_path / f'areas-fill.nii.gz'
             cc = nib.loadsave.load(cc_path)
             atlas = nib.loadsave.load(atlas_path)
             eloquent_dict = {

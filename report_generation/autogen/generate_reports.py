@@ -56,8 +56,7 @@ parser.add_argument("--cc-path", type=Path, required=True,
                     help="Path to BraTS_CC dataset directory.")
 parser.add_argument("--atlas-path", type=Path, required=True,
                     help="Path to BraTS_atlas directory (output of atlas generation).")
-parser.add_argument("--legend-path", type=Path, required=True,
-                    help="Path to legend_postprocessed.csv.")
+
 parser.add_argument("--eloquent-path", type=Path, required=True,
                     help="Path to BraTS_eloquent directory.")
 
