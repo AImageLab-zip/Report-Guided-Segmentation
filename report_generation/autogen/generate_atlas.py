@@ -65,7 +65,7 @@ for sub in tqdm(list(args.input_dir.iterdir())):
 
     tx_dir = args.output_dir / sub.name / "transforms"
     tx_dir.mkdir(parents=True, exist_ok=True)
-
+    shutil.copy(sub/f'{sub.name}-t1n.nii.gz',args.output_dir / sub.name/f'{sub.name}-t1n.nii.gz')
     reg = ants.registration(
         fixed=t1_subj,
         moving=t1_atlas,
