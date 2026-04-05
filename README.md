@@ -4,15 +4,19 @@ This is the repository of BraTS-ReportX, a paired resource of 257 clinical repor
 This repository contains code for: (1) automatic generation of quantitative report attributes from BraTS data, including anatomical localization and geometric measurements; (2) report encoding with biomedical language models; (3) evaluating the semantic coverage and overall quality of the dataset, supporting analyses of how well BraTS-ReportX captures clinically relevant report information compared with existing resources; and (4) training and testing of the proposed vision-text alignment framework for 3D tumor segmentation. 
 The codebase is designed to support reproducibility and further research on integrating structured clinical semantics into medical image segmentation.
 
-<figure>
- <img style="float: center" src="report_comparison.png" alt="Side view" width="80%">
- <figcaption><em>Overview of the annotation protocol. Clinician reports and automatically generated reports are produced independently and then concatenated.</em></figcaption>
-</figure>
+<p align="center">
+  <img src="report_comparison.png" width="80%">
+</p>
+<p align="center">
+  <em>Overview of the annotation protocol. Clinician reports and automatically generated reports are produced independently and then concatenated.</em>
+</p>
 
-<figure>
- <img style="float: center" src="model_overview.png" alt="Side view" width="80%">
- <figcaption><em>Our segmentation pipeline overview. Encoder features from a 3D U-Net are projected into flat visual embeddings, while clinical reports are mapped to text embeddings. A contrastive vision-text module aligns both modalities during training, while inference relies only on the image backbone.</em></figcaption>
-</figure>
+<p align="center">
+  <img src="model_overview.png" width="80%">
+</p>
+<p align="center">
+  <em>Our segmentation pipeline overview. Encoder features from a 3D U-Net are projected into flat visual embeddings, while clinical reports are mapped to text embeddings. A contrastive vision-text module aligns both modalities during training, while inference relies only on the image backbone.</em>
+</p>
 
 ## Table of Contents
 - [Project Structure](#project-structure)
