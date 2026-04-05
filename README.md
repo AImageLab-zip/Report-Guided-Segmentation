@@ -5,7 +5,12 @@ This repository contains code for: (1) automatic generation of quantitative repo
 The codebase is designed to support reproducibility and further research on integrating structured clinical semantics into medical image segmentation.
 
 <figure>
- <img style="float: left" src="model_overview.png" alt="Side view" width="100%">
+ <img style="float: left" src="report_comparison.png" alt="Side view" width="80%">
+ <figcaption><em>Overview of the annotation protocol. Clinician reports and automatically generated reports are produced independently and then concatenated.</em></figcaption>
+</figure>
+
+<figure>
+ <img style="float: left" src="model_overview.png" alt="Side view" width="80%">
  <figcaption><em>Our segmentation pipeline overview. Encoder features from a 3D U-Net are projected into flat visual embeddings, while clinical reports are mapped to text embeddings. A contrastive vision-text module aligns both modalities during training, while inference relies only on the image backbone.</em></figcaption>
 </figure>
 
